@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#0d1021" />
+  <title>DUO PK · 2048 Battle</title>
+  <style>
+    :root{
+      --bg:#090b15;--panel:rgba(20,24,45,.76);--panel2:rgba(255,255,255,.06);
+      --text:#f8f8ff;--muted:#a8adc4;--accent:#8a7dff;--accent2:#56dcff;
+      --danger:#ff6b93;--ok:#5be6a6;--gold:#ffd45e;--grid:#1d2138;
+      --shadow:0 24px 80px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:
+      radial-gradient(circle at 15% 15%,rgba(86,220,255,.16),transparent 30%),
+      radial-gradient(circle at 85% 12%,rgba(138,125,255,.22),transparent 34%),
+      radial-gradient(circle at 50% 100%,rgba(255,107,147,.11),transparent 36%),var(--bg);color:var(--text)}
+    body{min-height:100vh;overflow-x:hidden}
+    button,input{font:inherit}
+    button{border:0;color:inherit;cursor:pointer}
+    button:disabled{cursor:not-allowed;opacity:.45}
+    .shell{max-width:1180px;margin:0 auto;padding:22px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}
+    .brand{font-weight:900;letter-spacing:.08em;font-size:20px}.brand span{color:var(--accent2)}
+    .status-pill{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--panel2);color:var(--muted);font-size:13px}
+    .dot{width:8px;height:8px;border-radius:50%;background:#79809d}.dot.online{background:var(--ok);box-shadow:0 0 16px var(--ok)}
+    .screen{display:none}.screen.active{display:block}
+    .hero{min-height:calc(100vh - 105px);display:grid;grid-template-columns:1.1fr .9fr;align-items:center;gap:48px}
+    .eyebrow{color:var(--accent2);font-weight:800;letter-spacing:.18em;font-size:12px;text-transform:uppercase}
+    h1{font-size:clamp(44px,7vw,90px);line-height:.94;margin:14px 0 18px;letter-spacing:-.055em}
+    h1 em{font-style:normal;background:linear-gradient(100deg,var(--accent2),#b6a9ff 52%,#ff91b0);-webkit-background-clip:text;color:transparent}
+    .lead{font-size:17px;line-height:1.8;color:var(--muted);max-width:620px}
+    .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}.chip{padding:9px 12px;border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(255,255,255,.035);font-size:13px;color:#d8dbeb}
+    .card{background:var(--panel);border:1px solid rgba(255,255,255,.09);border-radius:28px;padding:24px;box-shadow:var(--shadow);backdrop-filter:blur(22px)}
+    .login-card h2{font-size:23px;margin:0 0 6px}.sub{color:var(--muted);font-size:13px;line-height:1.6}
+    .field{margin:18px 0}.label{display:block;font-size:12px;color:var(--muted);margin:0 0 8px 3px}
+    .input{width:100%;background:#111528;border:1px solid rgba(255,255,255,.09);color:var(--text);outline:none;padding:15px 16px;border-radius:15px;transition:.2s}
+    .input:focus{border-color:rgba(138,125,255,.8);box-shadow:0 0 0 4px rgba(138,125,255,.1)}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.primary,.secondary,.danger-btn{padding:14px 16px;border-radius:15px;font-weight:850;transition:.2s;transform:translateY(0)}
+    .primary{background:linear-gradient(135deg,var(--accent),#6e61ff);box-shadow:0 12px 28px rgba(108,91,255,.28)}.primary:hover,.secondary:hover,.danger-btn:hover{transform:translateY(-1px)}
+    .secondary{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08)}.danger-btn{background:rgba(255,107,147,.13);color:#ffc2d3;border:1px solid rgba(255,107,147,.25)}
+    .divider{display:flex;align-items:center;gap:10px;color:#707690;font-size:11px;margin:18px 0}.divider:before,.divider:after{content:"";height:1px;background:rgba(255,255,255,.07);flex:1}
+    .error{display:none;margin-top:12px;padding:11px 13px;border-radius:12px;background:rgba(255,107,147,.11);border:1px solid rgba(255,107,147,.22);color:#ffc4d5;font-size:13px}.error.show{display:block}
+    .room-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.room-code{font-size:28px;font-weight:950;letter-spacing:.12em}.room-meta{color:var(--muted);font-size:13px}
+    .players{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;margin:20px 0}.player-card{padding:20px;border-radius:22px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07)}.player-card.me{box-shadow:inset 0 0 0 1px rgba(86,220,255,.12)}
+    .avatar{width:52px;height:52px;display:grid;place-items:center;border-radius:18px;background:linear-gradient(135deg,rgba(86,220,255,.18),rgba(138,125,255,.22));font-size:28px;margin-bottom:12px}.pname{font-weight:900;font-size:18px}.pstate{margin-top:7px;font-size:12px;color:var(--muted)}.ready{color:var(--ok)}.vs{font-weight:950;font-size:23px;color:#707792}
+    .wait-actions{display:flex;flex-wrap:wrap;gap:10px}.wait-note{margin-top:14px;color:var(--muted);font-size:13px;line-height:1.7}
+    .arena-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;margin-bottom:14px}.scorebox{background:rgba(255,255,255,.045);padding:13px 15px;border-radius:17px;border:1px solid rgba(255,255,255,.07)}.scorebox.right{text-align:right}.score-name{font-size:12px;color:var(--muted)}.score{font-size:27px;font-weight:950;margin-top:2px}.timer{text-align:center}.timer strong{display:block;font-size:32px;line-height:1}.timer span{font-size:11px;color:var(--muted)}
+    .arena{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}.game-card{position:relative;overflow:hidden}.game-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}.max-tile{font-size:13px;color:var(--muted)}.max-tile b{color:var(--gold);font-size:18px}.combo{font-size:13px;color:#ffb0c5}
+    .board{width:min(100%,560px);aspect-ratio:1;margin:0 auto;background:#15192c;border-radius:22px;padding:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:9px;touch-action:none;position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+    .tile{display:grid;place-items:center;border-radius:15px;background:var(--grid);font-size:clamp(22px,6vw,42px);font-weight:950;letter-spacing:-.04em;transition:transform .09s ease,background .15s;font-variant-numeric:tabular-nums}.tile.pop{animation:pop .13s ease}@keyframes pop{50%{transform:scale(1.08)}}
+    .tile[data-v="2"]{background:#252a45}.tile[data-v="4"]{background:#30375b}.tile[data-v="8"]{background:#514b8f}.tile[data-v="16"]{background:#6556b3}.tile[data-v="32"]{background:#775cc8}.tile[data-v="64"]{background:#8d62d6}.tile[data-v="128"]{background:#2d7798}.tile[data-v="256"]{background:#2d8ea5}.tile[data-v="512"]{background:#2ea59c}.tile[data-v="1024"]{background:#c58a36;color:#17120a}.tile[data-v="2048"]{background:#ffd45e;color:#17120a;box-shadow:0 0 35px rgba(255,212,94,.22)}
+    .tile[data-v="0"]{color:transparent}.frozen{animation:frozenPulse .9s infinite alternate}@keyframes frozenPulse{from{box-shadow:0 0 0 1px rgba(86,220,255,.3),inset 0 0 45px rgba(86,220,255,.08)}to{box-shadow:0 0 30px rgba(86,220,255,.22),inset 0 0 60px rgba(86,220,255,.16)}}
+    .overlay{position:absolute;inset:0;background:rgba(6,8,18,.76);backdrop-filter:blur(8px);display:none;place-items:center;z-index:9;text-align:center;padding:22px}.overlay.show{display:grid}.overlay .big{font-size:clamp(60px,14vw,110px);font-weight:1000;line-height:.9}.overlay .small{color:var(--muted);margin-top:10px}
+    .side{display:grid;gap:14px}.side h3{margin:0 0 10px;font-size:15px}.skills{display:grid;gap:9px}.skill{display:grid;grid-template-columns:43px 1fr auto;align-items:center;gap:10px;padding:11px 12px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);text-align:left}.skill-ico{width:38px;height:38px;display:grid;place-items:center;border-radius:13px;background:rgba(255,255,255,.07);font-size:20px}.skill-name{font-size:13px;font-weight:850}.skill-desc{font-size:10px;color:var(--muted);margin-top:2px}.skill-cd{font-size:11px;color:var(--accent2);font-weight:800}
+    .op-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;aspect-ratio:1}.mini{border-radius:6px;background:#1c2035;display:grid;place-items:center;font-size:9px;font-weight:800;color:#aeb4cf}.mini.on{background:#3b4162;color:#fff}
+    .feed{height:130px;overflow:auto;display:flex;flex-direction:column;gap:7px;font-size:11px;color:#c7cada}.feed-item{padding:8px 9px;border-radius:10px;background:rgba(255,255,255,.035)}
+    .toast{position:fixed;left:50%;top:22px;transform:translate(-50%,-18px);opacity:0;pointer-events:none;z-index:100;padding:11px 15px;border-radius:999px;background:#171b2e;border:1px solid rgba(255,255,255,.09);box-shadow:var(--shadow);transition:.22s;font-size:13px}.toast.show{transform:translate(-50%,0);opacity:1}
+    .result{max-width:600px;margin:8vh auto 0;text-align:center}.result-emoji{font-size:62px}.result h2{font-size:48px;margin:10px 0 3px}.result-score{font-size:17px;color:var(--muted);margin-bottom:24px}.result-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+    .setup{margin-top:18px;padding:13px;border-radius:14px;background:rgba(255,212,94,.07);border:1px solid rgba(255,212,94,.14);font-size:12px;line-height:1.65;color:#e8dda9}.setup code{color:#fff}
+    @media(max-width:860px){.hero{grid-template-columns:1fr;gap:28px;padding:28px 0}.hero-copy{text-align:center}.lead{margin:auto}.chips{justify-content:center}.arena{grid-template-columns:1fr}.side{grid-template-columns:1fr 1fr}.room-head{align-items:flex-start}.players{gap:9px}.player-card{padding:15px}.arena-head{gap:8px}.scorebox{padding:10px}.score{font-size:22px}.timer strong{font-size:26px}}
+    @media(max-width:560px){.shell{padding:14px}.topbar{margin-bottom:10px}.hero{min-height:calc(100vh - 70px);padding:10px 0 28px}.hero-copy{display:none}.card{padding:17px;border-radius:22px}.actions{grid-template-columns:1fr}.players{grid-template-columns:1fr auto 1fr}.player-card{padding:12px}.avatar{width:42px;height:42px;border-radius:14px;font-size:22px}.pname{font-size:14px}.room-code{font-size:22px}.arena-head{position:sticky;top:0;z-index:30;padding:8px 0;background:linear-gradient(var(--bg) 75%,transparent)}.arena{gap:12px}.game-card{padding:12px}.board{gap:6px;padding:7px;border-radius:18px}.tile{border-radius:11px;font-size:clamp(22px,10vw,34px)}.side{grid-template-columns:1fr}.skills{grid-template-columns:1fr 1fr 1fr}.skill{grid-template-columns:1fr;justify-items:center;text-align:center;padding:9px 5px}.skill-desc{display:none}.skill-cd{font-size:10px}.op-card{display:none}.result h2{font-size:38px}}
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">DUO <span>PK</span></div>
+      <div class="status-pill"><i class="dot" id="netDot"></i><span id="netText">正在连接</span></div>
+    </header>
+
+    <section class="screen active" id="homeScreen">
+      <div class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Real-time two-player battle</div>
+          <h1>2048，<br><em>但可以打人。</em></h1>
+          <p class="lead">和朋友进入同一个房间，90 秒同时开局。合成、抢分、冻结对手、塞垃圾块——友情在这里接受一点非常必要的压力测试。</p>
+          <div class="chips"><span class="chip">⚡ 实时同步</span><span class="chip">📱 手机滑动</span><span class="chip">⌨️ 键盘方向键</span><span class="chip">😈 3 个 PK 技能</span></div>
+        </div>
+        <div class="card login-card">
+          <h2>进入竞技场</h2>
+          <div class="sub">无需注册。输入昵称后创建房间，或者输入朋友发来的房间码。</div>
+          <div class="field"><label class="label">你的昵称</label><input class="input" id="nickname" maxlength="12" placeholder="例如：Zihan" autocomplete="nickname" /></div>
+          <button class="primary" id="createBtn" style="width:100%">创建房间</button>
+          <div class="divider">OR</div>
+          <div class="field"><label class="label">房间码</label><input class="input" id="roomInput" maxlength="6" placeholder="例如：A8X2F" style="text-transform:uppercase;letter-spacing:.15em" /></div>
+          <button class="secondary" id="joinBtn" style="width:100%">加入房间</button>
+          <div class="error" id="homeError"></div>
+          <div class="setup" id="setupHint" style="display:none">尚未配置 Firebase。打开 <code>firebase-config.js</code> 粘贴你的 Firebase Web 配置后即可联机。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="lobbyScreen">
+      <div class="card" style="max-width:820px;margin:5vh auto 0">
+        <div class="room-head">
+          <div><div class="label">ROOM CODE</div><div class="room-code" id="roomCodeText">-----</div><div class="room-meta">把房间码发给朋友即可加入</div></div>
+          <button class="secondary" id="copyRoomBtn">复制房间码</button>
+        </div>
+        <div class="players">
+          <div class="player-card" id="p1Card"><div class="avatar">😼</div><div class="pname" id="p1Name">等待...</div><div class="pstate" id="p1State">未准备</div></div>
+          <div class="vs">VS</div>
+          <div class="player-card" id="p2Card"><div class="avatar">🐶</div><div class="pname" id="p2Name">等待玩家</div><div class="pstate" id="p2State">尚未加入</div></div>
+        </div>
+        <div class="wait-actions"><button class="primary" id="readyBtn">我准备好了</button><button class="danger-btn" id="leaveBtn">离开房间</button></div>
+        <div class="wait-note" id="lobbyNote">两个人都点击准备后会自动进入 3 秒倒计时。</div>
+      </div>
+    </section>
+
+    <section class="screen" id="gameScreen">
+      <div class="arena-head">
+        <div class="scorebox"><div class="score-name" id="myScoreName">YOU</div><div class="score" id="myScore">0</div></div>
+        <div class="timer"><strong id="timer">1:30</strong><span>TIME LEFT</span></div>
+        <div class="scorebox right"><div class="score-name" id="opScoreName">RIVAL</div><div class="score" id="opScore">0</div></div>
+      </div>
+      <div class="arena">
+        <div class="card game-card">
+          <div class="game-top"><div class="max-tile">MAX <b id="maxTile">2</b></div><div class="combo" id="statusText">FIGHT!</div></div>
+          <div class="board" id="board"></div>
+          <div class="overlay" id="gameOverlay"><div><div class="big" id="overlayBig">3</div><div class="small" id="overlaySmall">准备开战</div></div></div>
+        </div>
+        <aside class="side">
+          <div class="card"><h3>⚔️ 技能</h3><div class="skills">
+            <button class="skill" data-skill="freeze"><span class="skill-ico">❄️</span><span><div class="skill-name">冻结</div><div class="skill-desc">对手 3 秒无法移动</div></span><span class="skill-cd" id="cd-freeze">READY</span></button>
+            <button class="skill" data-skill="garbage"><span class="skill-ico">🧱</span><span><div class="skill-name">垃圾块</div><div class="skill-desc">给对手塞入一个 2</div></span><span class="skill-cd" id="cd-garbage">READY</span></button>
+            <button class="skill" data-skill="shield"><span class="skill-ico">🛡️</span><span><div class="skill-name">护盾</div><div class="skill-desc">抵挡下一次攻击</div></span><span class="skill-cd" id="cd-shield">READY</span></button>
+          </div></div>
+          <div class="card op-card"><h3>👀 对手棋盘</h3><div class="op-mini" id="opBoard"></div></div>
+          <div class="card"><h3>📡 战况</h3><div class="feed" id="feed"></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="screen" id="resultScreen">
+      <div class="card result"><div class="result-emoji" id="resultEmoji">🏆</div><h2 id="resultTitle">VICTORY</h2><div class="result-score" id="resultScore">0 : 0</div><div class="result-actions"><button class="primary" id="rematchBtn">再来一局</button><button class="secondary" id="resultLeaveBtn">返回首页</button></div><div class="wait-note" id="rematchNote"></div></div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
