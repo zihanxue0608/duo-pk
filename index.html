@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="theme-color" content="#080b14" />
-  <title>DUO PK · 双人 / 单人竞技场 V4.1</title>
+  <title>DUO PK · 双人 / 单人竞技场 V4.2</title>
   <style>
     :root{
       --bg:#070912;--bg2:#0b1020;--panel:rgba(18,22,39,.78);--panel2:rgba(25,30,53,.72);
@@ -87,6 +87,39 @@
     @media(max-width:980px){#gameScreen.screen.active{min-height:100svh}.arena{grid-template-columns:1fr}.game-card{height:clamp(500px,calc(100svh - 145px),720px)}.side{max-height:none;overflow:visible;display:grid;grid-template-columns:1fr 1fr}.stage-wrap{min-height:0}}
     @media(max-width:640px){body{overflow-y:auto}.shell{width:min(100% - 12px,1220px)}.arena-head{top:0}.game-card{height:calc(100svh - 118px);min-height:500px;max-height:690px}.game-top{margin-bottom:6px}.stage-wrap{border-radius:16px}.side{grid-template-columns:1fr;max-height:none}.memory-grid{width:min(92vw,62vh)}.wheel-canvas,.tracking-canvas,.duel-canvas,.stack-canvas{min-height:260px}.air-grid{width:min(92vw,58vh)}.gomoku{width:min(92vw,60vh)}.needle-canvas{min-height:270px}.reaction-pad{height:min(320px,68%)}.color-options{gap:7px}.stroop-btn{height:70px!important}.game-card{padding-bottom:max(8px,env(safe-area-inset-bottom))}}
     @media(max-height:720px) and (min-width:981px){.topbar{height:42px}.shell{padding-top:6px}.arena-head{margin:2px 0 6px}.scorebox{padding:8px 12px}.score{font-size:24px}.timer strong{font-size:25px}.game-card,.side{height:calc(100svh - 108px);max-height:none}.game-card{padding:10px}.stage-wrap{border-radius:16px}.game-top{margin-bottom:6px}}
+  
+    /* V4.2 — solo mode polish */
+    #gameScreen.solo-playing .arena-head{display:flex;align-items:stretch;justify-content:center;gap:10px;width:min(760px,100%);margin:8px auto 12px;position:relative;background:transparent!important}
+    #gameScreen.solo-playing .arena-head .scorebox:first-child{flex:1;max-width:360px;text-align:left;padding:11px 16px;border-color:rgba(87,231,255,.18);background:linear-gradient(135deg,rgba(87,231,255,.09),rgba(168,139,255,.06));box-shadow:0 12px 34px rgba(0,0,0,.14)}
+    #gameScreen.solo-playing .arena-head .scorebox.right{display:none!important}
+    #gameScreen.solo-playing .arena-head .timer{min-width:150px;padding:9px 18px;border:1px solid rgba(255,255,255,.08);border-radius:17px;background:rgba(255,255,255,.032);display:grid;place-items:center;box-shadow:0 12px 34px rgba(0,0,0,.12)}
+    #gameScreen.solo-playing .arena-head .timer strong{font-size:29px}
+    #gameScreen.solo-playing .arena-head .seriesbar{display:none!important}
+    #gameScreen.solo-playing .arena{display:block;width:min(980px,100%);margin:auto}
+    #gameScreen.solo-playing .game-card{border-color:rgba(87,231,255,.10);background:linear-gradient(145deg,rgba(20,25,44,.92),rgba(10,13,25,.86));box-shadow:0 28px 80px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.035)}
+    #gameScreen.solo-playing .game-top{padding:2px 2px 7px}
+    #gameScreen.solo-playing .mode{font-size:16px;letter-spacing:-.01em}
+    #gameScreen.solo-playing .hint{max-width:700px;line-height:1.5;color:#8995ad}
+    #gameScreen.solo-playing .stage-wrap{border-color:rgba(87,231,255,.08);background:radial-gradient(circle at 50% 20%,rgba(87,231,255,.035),transparent 38%),linear-gradient(180deg,#080d19,#060912);box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 25px 60px rgba(0,0,0,.24)}
+    .solo-library .game-option{min-height:150px;padding:15px;border-radius:19px;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.018));transition:transform .22s cubic-bezier(.2,.8,.2,1),border-color .22s ease,background .22s ease,box-shadow .22s ease}
+    .solo-library .game-option:hover{transform:translateY(-4px);box-shadow:0 16px 34px rgba(0,0,0,.16);border-color:rgba(255,255,255,.16)}
+    .solo-library .game-option.selected{transform:translateY(-2px);background:linear-gradient(145deg,rgba(87,231,255,.08),rgba(168,139,255,.055));box-shadow:0 14px 35px rgba(35,125,165,.11),inset 0 0 0 1px rgba(87,231,255,.12)}
+    .solo-library .game-option.selected:after{content:'已选择';position:absolute;right:10px;top:10px;padding:5px 8px;border-radius:999px;background:rgba(97,230,169,.11);border:1px solid rgba(97,230,169,.16);font-size:8px;font-weight:900;color:#8ff1bf}
+    .solo-settings{border-color:rgba(168,139,255,.11);background:linear-gradient(155deg,rgba(24,30,52,.88),rgba(12,16,29,.8))}
+    .solo-start{min-height:48px;box-shadow:0 14px 35px rgba(87,231,255,.12)}
+    .reaction-pad{position:relative;overflow:hidden;isolation:isolate;touch-action:manipulation;outline:none;border:1px solid rgba(255,255,255,.08)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 22px 55px rgba(0,0,0,.24);user-select:none;-webkit-user-select:none}
+    .reaction-pad:before{content:'';position:absolute;z-index:-1;width:260px;height:260px;border-radius:50%;left:50%;top:43%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,.055),transparent 65%);transition:.25s ease}
+    .reaction-kicker{position:absolute;top:20px;left:0;right:0;text-align:center;font-size:9px;font-weight:950;letter-spacing:.19em;color:rgba(255,255,255,.42)}
+    .reaction-tap-hint{position:absolute;bottom:20px;left:0;right:0;text-align:center;font-size:9px;font-weight:850;color:rgba(255,255,255,.35)}
+    .reaction-pad.go:before{background:radial-gradient(circle,rgba(97,230,169,.2),transparent 68%);transform:translate(-50%,-50%) scale(1.2)}
+    .reaction-pad.tap-ok{box-shadow:inset 0 0 0 3px rgba(97,230,169,.30),0 0 70px rgba(97,230,169,.18)!important}
+    .reaction-pad.tap-bad{box-shadow:inset 0 0 0 3px rgba(255,114,133,.28),0 0 60px rgba(255,114,133,.12)!important}
+    .reaction-pad.nudge{animation:reactionNudge .18s ease}
+    @keyframes reactionNudge{0%,100%{transform:translateX(0)}30%{transform:translateX(-5px)}70%{transform:translateX(5px)}}
+    .big-choice,.grid-cell,.color-btn,.tug-btn,.mobile-controls button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .big-choice:active,.grid-cell:active,.color-btn:active,.tug-btn:active,.mobile-controls button:active{transform:scale(.975)}
+    @media(max-width:640px){#gameScreen.solo-playing .arena-head{gap:7px;padding:0 2px;position:sticky;top:0;z-index:80}#gameScreen.solo-playing .arena-head .scorebox:first-child{padding:8px 11px;border-radius:14px}#gameScreen.solo-playing .arena-head .timer{min-width:104px;padding:7px 10px;border-radius:14px}#gameScreen.solo-playing .arena-head .timer strong{font-size:23px}#gameScreen.solo-playing .game-card{height:calc(100svh - 105px);min-height:480px}.solo-library .game-option{min-height:135px;padding:12px}.reaction-kicker{top:14px}.reaction-tap-hint{bottom:14px}}
+
   </style>
 </head>
 <body>
@@ -144,6 +177,6 @@
   <div class="exit-modal" id="exitModal"><div class="glass exit-panel"><div class="exit-kicker">MATCH CONTROL</div><h2>想先退出吗？</h2><div class="exit-copy" id="exitContext">长期房间会保留。你可以只认输当前一局，或者结束整套系列赛回到大厅。</div><div class="exit-actions"><button class="primary" id="resumeGameBtn">继续比赛</button><button class="secondary" id="forfeitRoundBtn">🏳️ 认输本局 · 下一局继续</button><button class="danger" id="endSeriesBtn">结束系列赛 · 回到大厅</button><button class="ghost" id="leaveRoomNowBtn">离开房间 · 稍后再回来</button></div><div class="exit-note">按 ESC 也可以打开 / 关闭这个菜单 · 房间码不会被删除</div></div></div>
   <div class="round-result" id="roundResult"><div class="glass round-box"><div class="round-emoji" id="roundEmoji">⚡</div><h2 id="roundResultTitle">本局胜利</h2><div class="round-score" id="roundResultScore">1000 : 820</div><div class="next-game" id="nextGameText">下一局：🔢 经典舒尔特 · 3 秒后开始</div></div></div>
 
-  <script type="module" src="./app.js?v=4.1-solo-training"></script>
+  <script type="module" src="./app.js?v=4.2-solo-polish"></script>
 </body>
 </html>
