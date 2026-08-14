@@ -1,10 +1,31 @@
-import { firebaseConfig } from './firebase-config.js';
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js';
-import {
-  getDatabase, ref, set, get, update, onValue, onChildAdded, onDisconnect,
-  push, runTransaction, serverTimestamp, remove
-} from 'https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js';
+// V3.2 hotfix: keep the UI bootable even if a Firebase module/config fails to load.
+// The Firebase web config is intentionally client-side configuration; database access
+// is still protected by Firebase Authentication + Realtime Database Rules.
+const firebaseConfig = {
+  apiKey: "AIzaSyCsJ1Pqb5ZL1prB785WN6BgyHPKUKNAIpw",
+  authDomain: "duo-pk.firebaseapp.com",
+  databaseURL: "https://duo-pk-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "duo-pk",
+  storageBucket: "duo-pk.firebasestorage.app",
+  messagingSenderId: "435279015745",
+  appId: "1:435279015745:web:4995993dd5635db7673bc0"
+};
+
+let initializeApp, getAuth, signInAnonymously, onAuthStateChanged;
+let getDatabase, ref, set, get, update, onValue, onChildAdded, onDisconnect;
+let push, runTransaction, serverTimestamp, remove;
+
+async function loadFirebaseSdk(){
+  const [appMod, authMod, dbMod] = await Promise.all([
+    import('https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js'),
+    import('https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js'),
+    import('https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js')
+  ]);
+  ({ initializeApp } = appMod);
+  ({ getAuth, signInAnonymously, onAuthStateChanged } = authMod);
+  ({ getDatabase, ref, set, get, update, onValue, onChildAdded, onDisconnect,
+     push, runTransaction, serverTimestamp, remove } = dbMod);
+}
 
 const $ = id => document.getElementById(id);
 const screens = ['homeScreen','lobbyScreen','gameScreen','seriesResultScreen'];
@@ -55,7 +76,7 @@ const els = Object.fromEntries([
   'seriesEmoji','seriesTitle','seriesFinal','seriesCaption','roundHistory','backLobbyBtn','resultHistoryBtn','resultLeaveBtn'
 ].map(id=>[id,$(id)]));
 
-let app,auth,db,uid=null,serverOffset=0;
+let app,auth,db,uid=null,serverOffset=0,firebaseReady=false;
 let roomCode=null,mySlot=null,roomData=null,roomUnsub=null,attackUnsub=null,connectedUnsub=null;
 let deviceId=localStorage.getItem('duopk_device') || crypto.randomUUID(); localStorage.setItem('duopk_device',deviceId);
 let renderTimer=null,roundId=null,activeGame='reaction',localPhase='idle',roundMounted=false;
@@ -88,17 +109,32 @@ function randInt(key,min,max){ return min+Math.floor(random01(key)*(max-min+1));
 function shuffleDet(arr,key){ return [...arr].map((v,i)=>({v,r:random01(`${key}:${i}`)})).sort((a,b)=>a.r-b.r).map(x=>x.v); }
 
 async function initFirebase(){
+  els.netText.textContent='加载 Firebase…';
+  els.createBtn.disabled=true; els.joinBtn.disabled=true;
+  await loadFirebaseSdk();
+  els.netText.textContent='正在登录…';
   app=initializeApp(firebaseConfig);auth=getAuth(app);db=getDatabase(app);
   onAuthStateChanged(auth,u=>{if(u)uid=u.uid;});
-  await signInAnonymously(auth);uid=auth.currentUser.uid;
-  connectedUnsub=onValue(ref(db,'.info/connected'),s=>{const on=s.val()===true;els.netDot.classList.toggle('online',on);els.netText.textContent=on?'在线':'网络断开';});
+  await withTimeout(signInAnonymously(auth),10000,'Firebase 匿名登录超时');
+  if(!auth.currentUser) throw new Error('Firebase 匿名登录没有返回用户');
+  uid=auth.currentUser.uid;
+  firebaseReady=true;
+  els.createBtn.disabled=false; els.joinBtn.disabled=false;
+  connectedUnsub=onValue(ref(db,'.info/connected'),s=>{
+    const on=s.val()===true;
+    els.netDot.classList.toggle('online',on);
+    els.netText.textContent=on?'在线':'网络连接中…';
+  },e=>{
+    console.error('connected listener',e);
+    els.netText.textContent='连接状态异常';
+  });
   onValue(ref(db,'.info/serverTimeOffset'),s=>serverOffset=s.val()||0);
   renderContinueCard();
 }
 function blankPlayer(name){ return {uid,deviceId,name,online:true,ready:false,score:0,progress:0,status:'在大厅',lastSeen:serverTimestamp()}; }
 function saveRecentRoom(){ if(roomCode){localStorage.setItem('duopk_lastRoom',roomCode);localStorage.setItem('duopk_nickname',normalizeName());renderContinueCard();} }
 function renderContinueCard(){ const code=localStorage.getItem('duopk_lastRoom'),name=localStorage.getItem('duopk_nickname');if(code&&name){els.continueCard.classList.add('show');els.continueTitle.textContent=`继续房间 ${code}`;els.continueSub.textContent=`以 ${name} 的昵称重新连接`; }else els.continueCard.classList.remove('show'); }
-function requireIdentity(){clearError();if(!uid){showError('Firebase 还在登录，请稍等 1 秒。');return false;}if(!normalizeName()){showError('先输入昵称。');return false;}return true;}
+function requireIdentity(){clearError();if(!firebaseReady||!db||!uid){showError('Firebase 还没有连接完成，请看右上角状态；如果一直不变，请强制刷新页面。');return false;}if(!normalizeName()){showError('先输入昵称。');return false;}return true;}
 
 async function createRoom(){
   if(!requireIdentity())return;els.createBtn.disabled=true;els.createBtn.textContent='正在创建…';
@@ -397,7 +433,7 @@ function lockTetris(){const p=gameState.piece;for(let r=0;r<p.m.length;r++)for(l
 function addTetrisGarbage(){const b=gameState.board,hole=randInt(`${roundId}:garb:${Date.now()}`,0,9);b.shift();b.push(Array.from({length:10},(_,i)=>i===hole?0:8));addFeed('🧱 底部增加垃圾行');}
 function mountTetris(){els.gameSurface.innerHTML='<div class="stage-inner"><div class="canvas-wrap" style="width:min(390px,86%);height:min(540px,94%)"><canvas class="game-canvas" id="tetrisCanvas" width="360" height="600"></canvas><div class="mobile-controls"><button data-tc="left">←</button><button data-tc="rotate">↻</button><button data-tc="down">↓</button><button data-tc="right">→</button></div></div></div>';document.querySelectorAll('[data-tc]').forEach(b=>b.addEventListener('click',()=>{const x=b.dataset.tc;x==='left'?tetrisMove(-1):x==='right'?tetrisMove(1):x==='rotate'?tetrisRotate():tetrisDrop();}));}
 function renderTetris(now,dt){const d=series().difficulty,base={easy:.75,medium:.56,hard:.38,hell:.22}[d],interval=effects.speedUntil>now?base*.52:base;gameState.dropAcc+=dt;if(gameState.dropAcc>interval){gameState.dropAcc=0;tetrisDrop();}const garbageEvery={easy:999,medium:22,hard:13,hell:8}[d],cy=Math.floor((now-series().startAt)/(garbageEvery*1000));if(garbageEvery<900&&cy>0&&cy!==gameState.lastGarbage){gameState.lastGarbage=cy;addTetrisGarbage();}drawTetris();progress=clamp(gameState.lines/20*100,0,100);status=`消行 ${gameState.lines}`;}
-function drawTetris(){const cv=$('tetrisCanvas');if(!cv)return,ctx=cv.getContext('2d'),W=36,H=30;ctx.clearRect(0,0,360,600);ctx.fillStyle='#080d18';ctx.fillRect(0,0,360,600);const cols=['','#5fe5ff','#ffd05e','#a88bff','#ff7ac8','#61e6a9','#ff8b63','#7197ff','#596176'];for(let y=0;y<20;y++)for(let x=0;x<10;x++)if(gameState.board[y][x]){ctx.fillStyle=cols[gameState.board[y][x]];ctx.fillRect(x*W+2,y*H+2,W-4,H-4);}const p=gameState.piece;if(p)for(let r=0;r<p.m.length;r++)for(let c=0;c<p.m[r].length;c++)if(p.m[r][c]){ctx.fillStyle=cols[p.c];ctx.fillRect((p.x+c)*W+2,(p.y+r)*H+2,W-4,H-4);}ctx.strokeStyle='rgba(255,255,255,.04)';for(let x=1;x<10;x++){ctx.beginPath();ctx.moveTo(x*W,0);ctx.lineTo(x*W,600);ctx.stroke();}}
+function drawTetris(){const cv=$('tetrisCanvas');if(!cv)return;const ctx=cv.getContext('2d'),W=36,H=30;ctx.clearRect(0,0,360,600);ctx.fillStyle='#080d18';ctx.fillRect(0,0,360,600);const cols=['','#5fe5ff','#ffd05e','#a88bff','#ff7ac8','#61e6a9','#ff8b63','#7197ff','#596176'];for(let y=0;y<20;y++)for(let x=0;x<10;x++)if(gameState.board[y][x]){ctx.fillStyle=cols[gameState.board[y][x]];ctx.fillRect(x*W+2,y*H+2,W-4,H-4);}const p=gameState.piece;if(p)for(let r=0;r<p.m.length;r++)for(let c=0;c<p.m[r].length;c++)if(p.m[r][c]){ctx.fillStyle=cols[p.c];ctx.fillRect((p.x+c)*W+2,(p.y+r)*H+2,W-4,H-4);}ctx.strokeStyle='rgba(255,255,255,.04)';for(let x=1;x<10;x++){ctx.beginPath();ctx.moveTo(x*W,0);ctx.lineTo(x*W,600);ctx.stroke();}}
 
 // ---------- Runner ----------
 function initRunner(){gameState={y:0,vy:0,onGround:true,invUntil:0,lastPass:-1,forceObstacle:false};}
@@ -407,14 +443,14 @@ function runnerCfg(){const d=series().difficulty;return{speed:{easy:220,medium:2
 function runnerObstacles(now){const cfg=runnerCfg(),el=now-series().startAt,cy=Math.floor(el/cfg.gap),out=[];for(let c=Math.max(0,cy-2);c<=cy+1;c++){const born=c*cfg.gap,age=(el-born)/1000,x=820-age*cfg.speed,w=30+randInt(`${roundId}:run:w:${c}`,0,26),h=35+randInt(`${roundId}:run:h:${c}`,0,40);out.push({c,x,w,h});}if(gameState.forceObstacle){const fx=820-((now-(gameState.forcedBorn||now))/1000)*cfg.speed*1.35;out.push({c:999999,x:fx,w:42,h:78});if(fx<-60)gameState.forceObstacle=false;}return out;}
 function renderRunner(now,dt){gameState.vy+=1650*dt;gameState.y+=gameState.vy*dt;if(gameState.y>=0){gameState.y=0;gameState.vy=0;gameState.onGround=true;}const obs=runnerObstacles(now),px=100,py=400+gameState.y,pw=36,ph=48;for(const o of obs){const oy=448-o.h;if(px+pw>o.x&&px<o.x+o.w&&py+ph>oy&&py<448&&now>gameState.invUntil){gameState.invUntil=now+900;addScore(-120,'撞到障碍 -120');}if(o.x+o.w<px&&o.c>gameState.lastPass&&o.c<999999){gameState.lastPass=o.c;addScore(80,'越过障碍 +80');}}
   if(effects.obstacleUntil<=now)gameState.forceObstacle=false;score=Math.max(score,Math.floor((now-series().startAt)/110));drawRunner(obs,px,py,pw,ph,now);progress=clamp((now-series().startAt)/(series().endAt-series().startAt)*100,0,100);status=now<gameState.invUntil?'💥 碰撞恢复中':'跑酷中';}
-function drawRunner(obs,px,py,pw,ph,now){const cv=$('runnerCanvas');if(!cv)return,ctx=cv.getContext('2d');ctx.clearRect(0,0,760,500);const grad=ctx.createLinearGradient(0,0,0,500);grad.addColorStop(0,'#0c1830');grad.addColorStop(1,'#09101c');ctx.fillStyle=grad;ctx.fillRect(0,0,760,500);ctx.fillStyle='#1f2b3a';ctx.fillRect(0,448,760,52);ctx.fillStyle=now<gameState.invUntil?'#ff778b':'#61e6a9';ctx.fillRect(px,py,pw,ph);ctx.fillStyle='#0a121d';ctx.fillRect(px+23,py+9,6,6);for(const o of obs){ctx.fillStyle='#ffb05f';ctx.fillRect(o.x,448-o.h,o.w,o.h);}ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='14px sans-serif';ctx.fillText('SPACE / 点击跳跃',18,28);}
+function drawRunner(obs,px,py,pw,ph,now){const cv=$('runnerCanvas');if(!cv)return;const ctx=cv.getContext('2d');ctx.clearRect(0,0,760,500);const grad=ctx.createLinearGradient(0,0,0,500);grad.addColorStop(0,'#0c1830');grad.addColorStop(1,'#09101c');ctx.fillStyle=grad;ctx.fillRect(0,0,760,500);ctx.fillStyle='#1f2b3a';ctx.fillRect(0,448,760,52);ctx.fillStyle=now<gameState.invUntil?'#ff778b':'#61e6a9';ctx.fillRect(px,py,pw,ph);ctx.fillStyle='#0a121d';ctx.fillRect(px+23,py+9,6,6);for(const o of obs){ctx.fillStyle='#ffb05f';ctx.fillRect(o.x,448-o.h,o.w,o.h);}ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='14px sans-serif';ctx.fillText('SPACE / 点击跳跃',18,28);}
 
 // ---------- Plane shooter ----------
 function initPlane(){gameState={x:380,enemies:[],bullets:[],spawnAcc:0,shotAcc:0,kills:0};}
 function mountPlane(){els.gameSurface.innerHTML='<div class="stage-inner"><div class="canvas-wrap"><canvas class="game-canvas" id="planeCanvas" width="760" height="500"></canvas><div class="info" style="position:absolute;left:12px;top:10px">移动鼠标 / 手指 / ← → 控制飞机 · 自动射击</div></div></div>';const cv=$('planeCanvas');cv.addEventListener('pointermove',e=>{if(!canInteract())return;const r=cv.getBoundingClientRect();gameState.x=clamp((e.clientX-r.left)*760/r.width,28,732);});cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();gameState.x=clamp((e.clientX-r.left)*760/r.width,28,732);});}
 function planeCfg(){const d=series().difficulty;return{spawn:{easy:.95,medium:.72,hard:.52,hell:.37}[d],enemy:{easy:105,medium:135,hard:170,hell:210}[d]};}
 function renderPlane(now,dt){const cfg=planeCfg(),rush=effects.rushUntil>now?1.8:1;gameState.spawnAcc+=dt*rush;while(gameState.spawnAcc>cfg.spawn){gameState.spawnAcc-=cfg.spawn;gameState.enemies.push({x:30+Math.random()*700,y:-20,v:cfg.enemy*(.8+Math.random()*.5),hp:1});}gameState.shotAcc+=dt;if(effects.jamUntil<=now&&gameState.shotAcc>.22){gameState.shotAcc=0;gameState.bullets.push({x:gameState.x,y:430});}for(const b of gameState.bullets)b.y-=430*dt;for(const e of gameState.enemies)e.y+=e.v*dt;for(const b of gameState.bullets)for(const e of gameState.enemies)if(e.hp>0&&Math.abs(b.x-e.x)<22&&Math.abs(b.y-e.y)<22){e.hp=0;b.y=-99;gameState.kills++;addScore(65,'击落敌机 +65');}gameState.bullets=gameState.bullets.filter(b=>b.y>-30);gameState.enemies=gameState.enemies.filter(e=>e.hp>0&&e.y<540);drawPlane(now);progress=clamp((now-series().startAt)/(series().endAt-series().startAt)*100,0,100);status=effects.jamUntil>now?'📡 武器受干扰':`击落 ${gameState.kills}`;}
-function drawPlane(now){const cv=$('planeCanvas');if(!cv)return,ctx=cv.getContext('2d');ctx.clearRect(0,0,760,500);ctx.fillStyle='#07101d';ctx.fillRect(0,0,760,500);for(let i=0;i<35;i++){ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillRect((i*97)%760,(i*53+Math.floor(now/25))%500,1.5,1.5);}ctx.fillStyle='#5ce4ff';ctx.beginPath();ctx.moveTo(gameState.x,440);ctx.lineTo(gameState.x-22,478);ctx.lineTo(gameState.x,470);ctx.lineTo(gameState.x+22,478);ctx.closePath();ctx.fill();ctx.fillStyle='#ffd16a';for(const b of gameState.bullets)ctx.fillRect(b.x-2,b.y,4,12);for(const e of gameState.enemies){ctx.fillStyle='#ff748a';ctx.beginPath();ctx.moveTo(e.x,e.y+22);ctx.lineTo(e.x-20,e.y-12);ctx.lineTo(e.x,e.y-5);ctx.lineTo(e.x+20,e.y-12);ctx.closePath();ctx.fill();}}
+function drawPlane(now){const cv=$('planeCanvas');if(!cv)return;const ctx=cv.getContext('2d');ctx.clearRect(0,0,760,500);ctx.fillStyle='#07101d';ctx.fillRect(0,0,760,500);for(let i=0;i<35;i++){ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillRect((i*97)%760,(i*53+Math.floor(now/25))%500,1.5,1.5);}ctx.fillStyle='#5ce4ff';ctx.beginPath();ctx.moveTo(gameState.x,440);ctx.lineTo(gameState.x-22,478);ctx.lineTo(gameState.x,470);ctx.lineTo(gameState.x+22,478);ctx.closePath();ctx.fill();ctx.fillStyle='#ffd16a';for(const b of gameState.bullets)ctx.fillRect(b.x-2,b.y,4,12);for(const e of gameState.enemies){ctx.fillStyle='#ff748a';ctx.beginPath();ctx.moveTo(e.x,e.y+22);ctx.lineTo(e.x-20,e.y-12);ctx.lineTo(e.x,e.y-5);ctx.lineTo(e.x+20,e.y-12);ctx.closePath();ctx.fill();}}
 
 // ---------- Tug ----------
 function mountTug(){els.gameSurface.innerHTML='<div class="stage-inner"><div class="tug"><div class="info">疯狂点击 / 按空格，把绳结拉向自己</div><div class="rope"><div class="rope-dot" id="ropeDot"></div></div><button class="tug-btn" id="tugBtn">🪢 PULL!</button><div class="info" id="tugInfo">每次 +10</div></div></div>';$('tugBtn').addEventListener('click',hitTug);}
@@ -547,5 +583,28 @@ function bind(){
   });
 }
 
-bind();renderGameLibrary();const savedName=localStorage.getItem('duopk_nickname');if(savedName)els.nickname.value=savedName;
-initFirebase().then(()=>{const q=new URLSearchParams(location.search),code=q.get('room')?.toUpperCase();if(code)els.roomInput.value=code;if(code&&savedName)setTimeout(()=>joinRoom(code),250);}).catch(e=>{console.error(e);els.netText.textContent='Firebase 连接失败';showError(friendlyError(e));});
+window.addEventListener('error',e=>{
+  console.error('DUO PK runtime error:',e.error||e.message);
+  if(els?.netText && !firebaseReady) els.netText.textContent='脚本运行失败';
+  if(els?.homeError) showError(`页面脚本错误：${e.message||'未知错误'}`);
+});
+window.addEventListener('unhandledrejection',e=>{
+  console.error('DUO PK unhandled rejection:',e.reason);
+  if(els?.homeError) showError(`网络/脚本错误：${friendlyError(e.reason)}`);
+});
+
+bind();renderGameLibrary();
+const savedName=localStorage.getItem('duopk_nickname');if(savedName)els.nickname.value=savedName;
+els.netText.textContent='初始化中…';
+initFirebase().then(()=>{
+  const q=new URLSearchParams(location.search),code=q.get('room')?.toUpperCase();
+  if(code)els.roomInput.value=code;
+  if(code&&savedName)setTimeout(()=>joinRoom(code),250);
+}).catch(e=>{
+  console.error(e);
+  firebaseReady=false;
+  els.createBtn.disabled=false; els.joinBtn.disabled=false;
+  els.netDot.classList.remove('online');
+  els.netText.textContent='Firebase 连接失败';
+  showError(`Firebase 连接失败：${friendlyError(e)}`);
+});
