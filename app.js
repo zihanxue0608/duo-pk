@@ -1,4 +1,4 @@
-// V3.2 hotfix: keep the UI bootable even if a Firebase module/config fails to load.
+// V3.3 UX refresh: keep the UI bootable even if a Firebase module/config fails to load.
 // The Firebase web config is intentionally client-side configuration; database access
 // is still protected by Firebase Authentication + Realtime Database Rules.
 const firebaseConfig = {
@@ -48,8 +48,8 @@ const SKILL_DEFS = {
 const GAMES = {
   reaction:{name:'反应力抢点',icon:'⚡',category:'reaction',desc:'等真正信号出现再点，地狱难度会有假信号。',skills:[['fake',550],['blind',1000],['shield',800]]},
   number:{name:'数字快判',icon:'⚖️',category:'brain',desc:'左右两个数字，迅速选更大的一个。',skills:[['blind',500],['freeze',950],['shield',750]]},
-  schulte:{name:'静态舒尔特',icon:'🔢',category:'brain',desc:'从 1 开始按顺序找数字，训练注意与视觉搜索。',skills:[['shuffle',650],['blind',1200],['shield',900]]},
-  schulteDynamic:{name:'动态舒尔特',icon:'🌀',category:'brain',desc:'每点对一个数字，整个矩阵重新洗牌。',skills:[['shuffle',500],['freeze',1050],['shield',850]]},
+  schulte:{name:'经典舒尔特',icon:'🔢',category:'brain',desc:'标准 5×5、1–25 随机排列；保持视线靠近中心，按升序依次找到数字。',skills:[['blind',900],['shield',1200]]},
+  schulteDynamic:{name:'动态数字追踪',icon:'🌀',category:'brain',desc:'舒尔特衍生玩法（非经典规则）：仍按 1–25 升序寻找，但数字会定时换位。',skills:[['shuffle',650],['freeze',1100],['shield',900]]},
   color:{name:'色块干扰',icon:'🎨',category:'brain',desc:'看方块本身的颜色，不要被方块上的文字骗到。',skills:[['blind',550],['speed',1000],['shield',800]]},
   falling:{name:'掉落射击',icon:'🎯',category:'reaction',desc:'目标从上方掉落，在它落地前精准射击。',skills:[['jam',650],['rush',1200],['shield',950]]},
   memory:{name:'记忆矩阵',icon:'🧠',category:'brain',desc:'记住闪过的格子，熄灭后复原。',skills:[['shuffle',500],['blind',900],['shield',750]]},
@@ -70,10 +70,11 @@ const els = Object.fromEntries([
   'roomCodeText','roomHint','copyRoomBtn','historyBtn','leaveBtn','p1Card','p2Card','p1Name','p2Name','p1State','p2State',
   'modeSeg','roundSeg','difficultySeg','difficultyHint','durationRange','durationLabel','durationBox','seriesPreviewTitle','seriesPreviewSub',
   'readyBtn','cancelSeriesBtn','lobbyNote','gameGrid','pickerNote','filterBar','settingOwner',
-  'myScoreName','opScoreName','myScore','opScore','timer','roundLabel','roundDots','gameModeTitle','gameHint','difficultyBadge','gameStage','gameSurface',
+  'myScoreName','opScoreName','myScore','opScore','timer','roundLabel','roundDots','gameModeTitle','gameHint','difficultyBadge','gameExitBtn','gameStage','gameSurface',
   'effectLayer','effectMsg','gameOverlay','overlayBig','overlaySmall','skills','opGenericScore','opGenericStatus','opProgress','feed',
   'historyDrawer','historyTitle','historyList','closeHistoryBtn','roundResult','roundEmoji','roundResultTitle','roundResultScore','nextGameText',
-  'seriesEmoji','seriesTitle','seriesFinal','seriesCaption','roundHistory','backLobbyBtn','resultHistoryBtn','resultLeaveBtn'
+  'seriesEmoji','seriesTitle','seriesFinal','seriesCaption','roundHistory','backLobbyBtn','resultHistoryBtn','resultLeaveBtn',
+  'exitModal','exitContext','resumeGameBtn','forfeitRoundBtn','endSeriesBtn','leaveRoomNowBtn'
 ].map(id=>[id,$(id)]));
 
 let app,auth,db,uid=null,serverOffset=0,firebaseReady=false;
@@ -96,7 +97,7 @@ function opponent(){ return roomData?.players?.[otherSlot()]||null; }
 function settings(){ return {...DEFAULT_SETTINGS,...(roomData?.settings||{})}; }
 function series(){ return roomData?.series||{status:'lobby'}; }
 function randomCode(){ const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from({length:5},()=>c[Math.floor(Math.random()*c.length)]).join(''); }
-function friendlyError(e){ const c=e?.code||''; if(c.includes('permission-denied'))return 'Firebase Rules 需要更新到 V3 / V3.1。'; if(c.includes('auth/operation-not-allowed'))return '请开启 Firebase Anonymous 登录。'; return e?.message||'未知错误'; }
+function friendlyError(e){ const c=e?.code||''; if(c.includes('permission-denied'))return 'Firebase Realtime Database Rules 需要更新到项目附带的最新版。'; if(c.includes('auth/operation-not-allowed'))return '请开启 Firebase Anonymous 登录。'; return e?.message||'未知错误'; }
 function showError(t){ els.homeError.textContent=t;els.homeError.classList.add('show'); }
 function clearError(){ els.homeError.classList.remove('show'); }
 function addFeed(t){ const d=document.createElement('div');d.className='feed-item';d.textContent=t;els.feed.prepend(d);while(els.feed.children.length>10)els.feed.lastChild.remove(); }
@@ -250,8 +251,17 @@ function handleRoundState(sr){
   if(newRound||!roundMounted)mountGame(activeGame);
 }
 function isCoordinator(){return !!mySlot;}
-function startRenderLoop(){if(renderTimer)return;lastFrameAt=performance.now();renderTimer=setInterval(renderFrame,50);}
-function stopRenderLoop(){if(renderTimer){clearInterval(renderTimer);renderTimer=null;}}
+function startRenderLoop(){
+  if(renderTimer)return;
+  lastFrameAt=performance.now();
+  const tick=()=>{
+    if(!renderTimer)return;
+    renderFrame();
+    renderTimer=requestAnimationFrame(tick);
+  };
+  renderTimer=requestAnimationFrame(tick);
+}
+function stopRenderLoop(){if(renderTimer){cancelAnimationFrame(renderTimer);renderTimer=null;}}
 function renderFrame(){
   const sr=series();if(sr.status!=='round')return;const now=serverNow(),perf=performance.now(),dt=Math.min(.1,(perf-lastFrameAt)/1000);lastFrameAt=perf;
   const live=now>=sr.startAt&&now<sr.endAt;localPhase=now<sr.startAt?'countdown':live?'playing':'ending';
@@ -283,7 +293,7 @@ async function finalizeRound(sr,early=false){
   }catch(e){console.error(e);}finally{finishBusy=false;}
 }
 function handleRoundResult(sr){
-  stopRenderLoop();localPhase='round_result';const r=sr.roundResult;if(!r)return;const mine=r[mySlot]||0,op=r[otherSlot()]||0,won=r.winner===mySlot,draw=r.winner==='draw';els.roundResult.classList.add('show');els.roundEmoji.textContent=draw?'🤝':won?'⚡':'💥';els.roundResultTitle.textContent=draw?'本局平局':won?'本局胜利':'本局失利';els.roundResultScore.textContent=`${mine.toLocaleString()} : ${op.toLocaleString()}`;
+  stopRenderLoop();localPhase='round_result';const r=sr.roundResult;if(!r)return;const mine=r[mySlot]||0,op=r[otherSlot()]||0,won=r.winner===mySlot,draw=r.winner==='draw',forfeitMine=r.forfeit===mySlot,forfeitOp=r.forfeit===otherSlot();els.roundResult.classList.add('show');els.roundEmoji.textContent=draw?'🤝':forfeitMine?'🏳️':forfeitOp?'🎁':won?'⚡':'💥';els.roundResultTitle.textContent=forfeitMine?'你已认输本局':forfeitOp?'对手退出 · 本局胜利':draw?'本局平局':won?'本局胜利':'本局失利';els.roundResultScore.textContent=`${mine.toLocaleString()} : ${op.toLocaleString()}`;
   const playlist=Array.isArray(sr.playlist)?sr.playlist:Object.values(sr.playlist||{}),next=playlist[sr.roundIndex+1];els.nextGameText.textContent=next?`下一局：${GAMES[next].icon} ${GAMES[next].name} · 即将自动开始`:'系列赛完成 · 正在生成总战绩';
   if(isCoordinator()&&!advanceTimeout){const wait=Math.max(120,(sr.resultAt||serverNow())+3300-serverNow());advanceTimeout=setTimeout(()=>{advanceTimeout=null;if(series().status==='round_result')advanceSeries(series());},wait);}
 }
@@ -374,13 +384,64 @@ function renderNumber(now){const x=numberInfo(now);$('numberL').textContent=x.l;
 function hitNumber(c){if(!canInteract())return;const x=numberInfo(serverNow());if(gameState.answered===x.cycle)return;gameState.answered=x.cycle;if(c===x.ans)addScore(90,'判断正确 +90');else addScore(-35,'判断错误 -35');}
 
 // ---------- Schulte ----------
-function schulteSize(){return {easy:4,medium:5,hard:6,hell:7}[series().difficulty]||5;}
-function initSchulte(dynamic){const n=schulteSize(),total=n*n;gameState={dynamic,n,total,next:1,order:shuffleDet(Array.from({length:total},(_,i)=>i+1),`${roundId}:schulte:0`),salt:0,lastCorrectAt:serverNow()};}
-function mountSchulte(){const n=gameState.n;els.gameSurface.innerHTML=`<div class="stage-inner"><div class="choice-wrap"><div class="info" id="schulteInfo">从 1 开始，按顺序点击</div><div class="grid-game" id="schulteGrid" style="grid-template-columns:repeat(${n},1fr)"></div></div></div>`;drawSchulte();}
-function drawSchulte(){const grid=$('schulteGrid');if(!grid)return;grid.innerHTML='';for(const num of gameState.order){const b=document.createElement('button');b.className='grid-cell'+(num===gameState.next?' target':'');b.textContent=num;b.addEventListener('click',()=>hitSchulte(num));grid.appendChild(b);}$('schulteInfo').textContent=`下一个：${gameState.next<=gameState.total?gameState.next:'完成一轮'} · ${gameState.dynamic?'每次正确都会洗牌':'静态矩阵'}`;}
-function shuffleSchulte(fromAttack=false){gameState.salt=(gameState.salt||0)+1;gameState.order=shuffleDet(gameState.order,`${roundId}:schulte:${gameState.next}:${gameState.salt}:${fromAttack?'atk':'self'}`);drawSchulte();}
-function hitSchulte(num){if(!canInteract()||num!==gameState.next)return;if(gameState.next>gameState.total)return;const dt=serverNow()-gameState.lastCorrectAt,pts=Math.max(45,150-Math.floor(dt/25));gameState.lastCorrectAt=serverNow();gameState.next++;addScore(pts,`找到 ${num} +${pts}`,((gameState.next-1)/gameState.total)*100);if(gameState.next>gameState.total){addScore(350,'完成整张舒尔特 +350',100);gameState.next=1;gameState.lastCorrectAt=serverNow();shuffleSchulte();}else if(gameState.dynamic)shuffleSchulte();else drawSchulte();}
-function renderSchulte(){status=`舒尔特 · 找 ${gameState.next}`;}
+function schulteSize(){return 5;}
+function schultePenalty(){return {easy:0,medium:10,hard:20,hell:35}[series().difficulty]||10;}
+function schulteMoveInterval(){return {easy:2600,medium:1900,hard:1350,hell:900}[series().difficulty]||1900;}
+function schulteOrder(sheet=0,salt=0){return shuffleDet(Array.from({length:25},(_,i)=>i+1),`${roundId}:schulte-sheet:${sheet}:${salt}`);}
+function initSchulte(dynamic){
+  gameState={dynamic,n:5,total:25,next:1,sheet:0,tables:0,order:schulteOrder(0,0),salt:0,lastCorrectAt:serverNow(),tableStartedAt:serverNow(),mistakes:0,dynamicCycle:-1,wrongNum:null,wrongUntil:0,completeUntil:0};
+}
+function mountSchulte(){
+  els.gameSurface.innerHTML=`<div class="stage-inner"><div class="schulte-wrap"><div class="schulte-topline"><div><b id="schulteMode">${gameState.dynamic?'动态数字追踪':'经典舒尔特表'}</b><span id="schulteProgress">1 / 25</span></div><div class="schulte-rule">按 1 → 25 升序寻找 · 视线尽量停在表格中心</div></div><div class="schulte-board-wrap"><div class="grid-game schulte-grid" id="schulteGrid" style="grid-template-columns:repeat(5,1fr)"></div><div class="schulte-focus" aria-hidden="true"><i></i></div></div><div class="schulte-footer"><span id="schulteInfo">不要追着数字逐格扫；用周边视野去找。</span><span id="schulteStats">0 张 · 0 误触</span></div></div></div>`;
+  drawSchulte();
+}
+function drawSchulte(){
+  const grid=$('schulteGrid');if(!grid)return;grid.innerHTML='';
+  for(const num of gameState.order){
+    const b=document.createElement('button');b.className='grid-cell schulte-cell';b.textContent=num;b.dataset.num=num;b.setAttribute('aria-label',`数字 ${num}`);
+    if(gameState.wrongNum===num&&serverNow()<gameState.wrongUntil)b.classList.add('wrong');
+    b.addEventListener('click',()=>hitSchulte(num));grid.appendChild(b);
+  }
+  const p=$('schulteProgress'),s=$('schulteStats'),i=$('schulteInfo');
+  if(p)p.textContent=gameState.next<=25?`${gameState.next} / 25`:'完成';
+  if(s)s.textContent=`${gameState.tables} 张 · ${gameState.mistakes} 误触`;
+  if(i)i.textContent=gameState.dynamic?'衍生玩法：数字会定时换位，但点击顺序仍是 1 → 25。':'经典规则：数字位置保持不变，整张完成后才生成下一张。';
+}
+function shuffleSchulte(fromAttack=false){
+  if(!gameState.dynamic&&fromAttack)return;
+  gameState.salt=(gameState.salt||0)+1;
+  gameState.order=shuffleDet(gameState.order,`${roundId}:schulte-move:${gameState.sheet}:${gameState.salt}:${fromAttack?'atk':'cycle'}`);
+  drawSchulte();
+}
+function startNextSchulteTable(now=serverNow()){
+  gameState.sheet++;gameState.next=1;gameState.salt=0;gameState.order=schulteOrder(gameState.sheet,0);gameState.lastCorrectAt=now;gameState.tableStartedAt=now;gameState.dynamicCycle=-1;gameState.completeUntil=0;gameState.wrongNum=null;drawSchulte();
+}
+function hitSchulte(num){
+  if(!canInteract()||gameState.next>25||serverNow()<gameState.completeUntil)return;
+  const now=serverNow();
+  if(num!==gameState.next){
+    gameState.mistakes++;gameState.wrongNum=num;gameState.wrongUntil=now+280;
+    const penalty=schultePenalty();if(penalty)addScore(-penalty,`误触 ${num} -${penalty}`);else status=`误触 ${num} · 顺序不变`;
+    drawSchulte();setTimeout(()=>{if(gameState.wrongNum===num&&serverNow()>=gameState.wrongUntil){gameState.wrongNum=null;drawSchulte();}},300);return;
+  }
+  const reaction=Math.max(0,now-gameState.lastCorrectAt),speedBonus=Math.max(0,Math.round(35-reaction/90));
+  gameState.lastCorrectAt=now;gameState.next++;
+  addScore(35+speedBonus,`找到 ${num} +${35+speedBonus}`,((gameState.next-1)/25)*100);
+  if(gameState.next>25){
+    const elapsed=now-gameState.tableStartedAt,finishBonus=clamp(900-Math.floor(elapsed/45),180,760);
+    gameState.tables++;addScore(finishBonus,`完成一张 · ${(elapsed/1000).toFixed(1)}s +${finishBonus}`,100);gameState.completeUntil=now+720;drawSchulte();
+  }else drawSchulte();
+}
+function renderSchulte(now){
+  if(gameState.next>25&&gameState.completeUntil&&now>=gameState.completeUntil){startNextSchulteTable(now);}
+  if(gameState.dynamic&&gameState.next<=25){
+    const cycle=Math.floor((now-gameState.tableStartedAt)/schulteMoveInterval());
+    if(cycle>0&&cycle!==gameState.dynamicCycle){gameState.dynamicCycle=cycle;shuffleSchulte(false);}
+  }
+  progress=clamp(((Math.min(gameState.next,26)-1)/25)*100,0,100);
+  status=gameState.next>25?'✅ 完成一张':`${gameState.dynamic?'动态追踪':'经典舒尔特'} · ${gameState.next}/25 · ${gameState.tables} 张`;
+  const p=$('schulteProgress'),s=$('schulteStats');if(p)p.textContent=gameState.next<=25?`${gameState.next} / 25`:'完成';if(s)s.textContent=`${gameState.tables} 张 · ${gameState.mistakes} 误触`;
+}
 
 // ---------- Stroop color ----------
 const COLORS=[['红','#ef5363'],['蓝','#458cff'],['绿','#35c98b'],['黄','#f0c44f'],['紫','#9c6cff'],['橙','#ff914d'],['粉','#ef70b7'],['青','#49d5dc']];
@@ -553,6 +614,39 @@ function mountAirstrike(){const n=airstrikeSize();gameState={shots:new Set(),n};
 function hitAirstrike(i){if(!canInteract()||gameState.shots.has(i))return;gameState.shots.add(i);const t=airTargets(otherSlot(),gameState.n),b=$('airGrid').children[i];if(t.heads.has(i)){b.classList.add('correct');b.textContent='🎯';addScore(180,'击中机头 +180');}else if(t.cells.has(i)){b.classList.add('correct');b.textContent='✈';addScore(70,'击中机身 +70');}else{b.classList.add('wrong');b.textContent='·';addScore(-12,'落空 -12');}const hit=[...gameState.shots].filter(x=>t.cells.has(x)).length;progress=clamp(hit/t.cells.size*100,0,100);if(hit===t.cells.size)addScore(300,'全部击落 +300',100);}
 function renderAirstrike(){status=`坐标打飞机 · 已射击 ${gameState.shots.size} 次`;}
 
+
+// ---------- in-match exit / forfeit ----------
+function openExitModal(){
+  if(!roomCode)return;
+  const sr=series();
+  els.exitContext.textContent=sr.status==='round'?`第 ${(sr.roundIndex||0)+1}/${sr.totalRounds||settings().rounds} 局进行中。你可以只认输本局，也可以结束整套系列赛；长期房间不会被删除。`:'你可以回到大厅或暂时离开，长期房间和房间码都会保留。';
+  els.forfeitRoundBtn.style.display=sr.status==='round'?'flex':'none';
+  els.endSeriesBtn.style.display=sr.status!=='lobby'?'flex':'none';
+  els.exitModal.classList.add('show');
+}
+function closeExitModal(){els.exitModal.classList.remove('show');}
+async function forfeitCurrentRound(){
+  const sr=series();if(!roomCode||sr.status!=='round')return closeExitModal();
+  closeExitModal();
+  try{
+    await flushPlayerState();
+    const op=otherSlot(),mineScore=Math.max(0,Number(score||0)),opScore=Math.max(0,Number(opponent()?.score||0));
+    const result={index:sr.roundIndex,game:activeGame,p1:mySlot==='p1'?mineScore:opScore,p2:mySlot==='p2'?mineScore:opScore,winner:op,forfeit:mySlot,finishedAt:serverNow()};
+    await runTransaction(ref(db,`rooms/${roomCode}/series`),cur=>{
+      if(!cur||cur.status!=='round'||cur.roundId!==sr.roundId)return;
+      const arr=Array.isArray(cur.roundResults)?[...cur.roundResults]:Object.values(cur.roundResults||{}),wins={p1:Number(cur.wins?.p1||0),p2:Number(cur.wins?.p2||0)};
+      arr[cur.roundIndex]=result;wins[op]++;return {...cur,status:'round_result',roundResults:arr,wins,roundResult:result,resultAt:serverNow()};
+    });
+    await update(ref(db,`rooms/${roomCode}/players/${mySlot}`),{status:'本局认输',score:mineScore,progress});
+  }catch(e){console.error(e);addFeed(`退出失败：${friendlyError(e)}`);}
+}
+async function endSeriesToLobby(){closeExitModal();await cancelSeries();}
+async function leaveRoomNow(){
+  closeExitModal();
+  try{if(roomCode&&series().status!=='lobby')await cancelSeries();}catch(e){console.error(e);}
+  await leaveRoom(true);
+}
+
 // ---------- history ----------
 async function openHistory(){
   if(!roomData?.players?.p1||!roomData?.players?.p2){els.historyDrawer.classList.add('show');els.historyTitle.textContent='历史战绩';els.historyList.innerHTML='<div class="empty">等朋友加入后，这里会显示你们两个人的长期战绩。</div>';return;}
@@ -564,6 +658,7 @@ async function openHistory(){
 // ---------- bindings ----------
 function bind(){
   els.createBtn.addEventListener('click',createRoom);els.joinBtn.addEventListener('click',()=>joinRoom());els.readyBtn.addEventListener('click',toggleReady);els.cancelSeriesBtn.addEventListener('click',cancelSeries);els.leaveBtn.addEventListener('click',()=>leaveRoom(true));els.resultLeaveBtn.addEventListener('click',()=>leaveRoom(true));els.backLobbyBtn.addEventListener('click',backToLobby);
+  els.gameExitBtn.addEventListener('click',openExitModal);els.resumeGameBtn.addEventListener('click',closeExitModal);els.forfeitRoundBtn.addEventListener('click',forfeitCurrentRound);els.endSeriesBtn.addEventListener('click',endSeriesToLobby);els.leaveRoomNowBtn.addEventListener('click',leaveRoomNow);els.exitModal.addEventListener('click',e=>{if(e.target===els.exitModal)closeExitModal();});
   els.copyRoomBtn.addEventListener('click',async()=>{const url=`${location.origin}${location.pathname}?room=${roomCode}`;try{await navigator.clipboard.writeText(`${url}\n房间码：${roomCode}`);els.roomHint.textContent='邀请链接 + 房间码已复制';setTimeout(()=>els.roomHint.textContent='房间会保留，之后可以继续用同一个房间码回来',1700);}catch{els.roomHint.textContent=`房间码：${roomCode}`;}});
   els.historyBtn.addEventListener('click',openHistory);els.resultHistoryBtn.addEventListener('click',openHistory);els.closeHistoryBtn.addEventListener('click',()=>els.historyDrawer.classList.remove('show'));els.historyDrawer.addEventListener('click',e=>{if(e.target===els.historyDrawer)els.historyDrawer.classList.remove('show');});
   els.continueBtn.addEventListener('click',()=>{const name=localStorage.getItem('duopk_nickname'),code=localStorage.getItem('duopk_lastRoom');if(name)els.nickname.value=name;if(code)joinRoom(code);});
@@ -574,6 +669,7 @@ function bind(){
   els.durationRange.addEventListener('input',()=>{els.durationLabel.textContent=`${els.durationRange.value} 秒`;els.durationBox.textContent=`${els.durationRange.value}s`;});els.durationRange.addEventListener('change',()=>updateSetting({durationSec:Number(els.durationRange.value)}));
   document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===b));renderGameLibrary();}));
   window.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){if(els.exitModal.classList.contains('show'))closeExitModal();else if(roomCode&&series().status!=='lobby')openExitModal();return;}
     if(localPhase!=='playing')return;const k=e.key.toLowerCase();if(activeGame==='2048'){const m={arrowleft:'left',a:'left',arrowright:'right',d:'right',arrowup:'up',w:'up',arrowdown:'down',s:'down'}[k];if(m){e.preventDefault();move2048(m);}}
     else if(activeGame==='tetris'){if(k==='arrowleft'||k==='a')tetrisMove(-1);else if(k==='arrowright'||k==='d')tetrisMove(1);else if(k==='arrowup'||k==='w')tetrisRotate();else if(k==='arrowdown'||k==='s')tetrisDrop();}
     else if(activeGame==='runner'&&(k===' '||k==='arrowup'||k==='w')){e.preventDefault();runnerJump();}
