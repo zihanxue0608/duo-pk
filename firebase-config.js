@@ -1,6 +1,3 @@
-// 1) 打开 Firebase Console -> Project settings -> Your apps -> Web app
-// 2) 把网页配置完整粘贴到下面。注意：Web API Key 本来就是客户端配置的一部分；
-//    真正的访问控制依赖 Firebase Authentication + Realtime Database Security Rules。
 export const firebaseConfig = {
   apiKey: "AIzaSyCsJ1Pqb5ZL1prB785WN6BgyHPKUKNAIpw",
   authDomain: "duo-pk.firebaseapp.com",
