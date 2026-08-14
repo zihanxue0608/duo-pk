@@ -28,7 +28,7 @@ async function loadFirebaseSdk(){
 }
 
 const $ = id => document.getElementById(id);
-const screens = ['homeScreen','lobbyScreen','gameScreen','seriesResultScreen'];
+const screens = ['homeScreen','soloLobbyScreen','lobbyScreen','gameScreen','soloResultScreen','seriesResultScreen'];
 const DIFFS = {
   easy:{name:'简单',factor:.82}, medium:{name:'中等',factor:1}, hard:{name:'难',factor:1.18}, hell:{name:'地狱',factor:1.38}
 };
@@ -68,16 +68,19 @@ const GAMES = {
   airstrike:{name:'坐标打飞机',icon:'🛩️',category:'board',desc:'先用 15 秒布置自己的飞机，再轮流轰炸；命中只显示命中，不暴露中心。',skills:[]}
 };
 const GAME_IDS = Object.keys(GAMES);
+const SOLO_GAME_IDS = ['reaction','number','schulte','schulteDynamic','color','falling','memory','memorySequence','tracking','2048','tetris','runner','plane','tug','tugRhythm'];
 const DEFAULT_SETTINGS = {mode:'same',rounds:5,difficulty:'medium',durationSec:45,sameGame:'reaction',randomPool:['reaction','number','schulteDynamic','color','falling','memorySequence','tracking','runner','tugRhythm']};
 
 const els = Object.fromEntries([
-  'nickname','roomInput','createBtn','joinBtn','homeError','continueCard','continueTitle','continueSub','continueBtn','netDot','netText',
+  'nickname','roomInput','createBtn','joinBtn','soloBtn','homeError','continueCard','continueTitle','continueSub','continueBtn','netDot','netText',
+  'soloBackHomeBtn','soloDifficultySeg','soloDurationRange','soloDurationLabel','soloDurationBox','soloGameGrid','soloFilterBar','soloSelectedText','soloBestText','soloStartBtn',
   'roomCodeText','roomHint','copyRoomBtn','historyBtn','leaveBtn','p1Card','p2Card','p1Name','p2Name','p1State','p2State',
   'modeSeg','roundSeg','difficultySeg','difficultyHint','durationRange','durationLabel','durationBox','seriesPreviewTitle','seriesPreviewSub',
   'readyBtn','cancelSeriesBtn','lobbyNote','gameGrid','pickerNote','filterBar','settingOwner',
   'myScoreName','opScoreName','myScore','opScore','timer','roundLabel','roundDots','gameModeTitle','gameHint','difficultyBadge','gameExitBtn','gameStage','gameSurface',
   'effectLayer','effectMsg','gameOverlay','overlayBig','overlaySmall','skills','opGenericScore','opGenericStatus','opProgress','feed',
   'historyDrawer','historyTitle','historyList','closeHistoryBtn','roundResult','roundEmoji','roundResultTitle','roundResultScore','nextGameText',
+  'soloResultEmoji','soloResultTitle','soloResultScore','soloResultMeta','soloResultBest','soloReplayBtn','soloSettingsBtn','soloResultHomeBtn',
   'seriesEmoji','seriesTitle','seriesFinal','seriesCaption','roundHistory','backLobbyBtn','resultHistoryBtn','resultLeaveBtn',
   'exitModal','exitContext','resumeGameBtn','forfeitRoundBtn','endSeriesBtn','leaveRoomNowBtn'
 ].map(id=>[id,$(id)]));
@@ -90,6 +93,7 @@ let score=0,progress=0,status='等待开局',syncTimer=null,lastSyncAt=0,finishB
 let gameState={},usedSkills=new Set(),shieldActive=false;
 let effects={freezeUntil:0,blindUntil:0,jamUntil:0,rushUntil:0,speedUntil:0,obstacleUntil:0,fakeUntil:0};
 let activeFilter='all',lastFrameAt=performance.now(),advanceTimeout=null;
+let soloMode=false,soloFilter='all',soloSettings={difficulty:'medium',durationSec:45,game:'reaction'},soloSession=null,soloFinishing=false;
 
 function showScreen(id){ screens.forEach(s=>$(s).classList.toggle('active',s===id)); }
 function normalizeName(v=els.nickname.value){ return v.trim().replace(/[.#$\[\]/]/g,'').slice(0,12); }
@@ -97,10 +101,10 @@ function keyName(v){ return normalizeName(v).trim().toLowerCase().replace(/\s+/g
 function pairKey(){ const a=keyName(roomData?.players?.p1?.name||'p1'),b=keyName(roomData?.players?.p2?.name||'p2'); return [a,b].sort().join('__'); }
 function serverNow(){ return Date.now()+serverOffset; }
 function otherSlot(){ return mySlot==='p1'?'p2':'p1'; }
-function me(){ return roomData?.players?.[mySlot]||null; }
-function opponent(){ return roomData?.players?.[otherSlot()]||null; }
-function settings(){ return {...DEFAULT_SETTINGS,...(roomData?.settings||{})}; }
-function series(){ return roomData?.series||{status:'lobby'}; }
+function me(){ if(soloMode)return {name:normalizeName()||localStorage.getItem('duopk_nickname')||'PLAYER',online:true}; return roomData?.players?.[mySlot]||null; }
+function opponent(){ if(soloMode)return null; return roomData?.players?.[otherSlot()]||null; }
+function settings(){ if(soloMode)return {...DEFAULT_SETTINGS,mode:'same',rounds:1,sameGame:soloSettings.game,difficulty:soloSettings.difficulty,durationSec:soloSettings.durationSec}; return {...DEFAULT_SETTINGS,...(roomData?.settings||{})}; }
+function series(){ if(soloMode)return soloSession||{status:'lobby',roundIndex:0,totalRounds:1,difficulty:soloSettings.difficulty,durationSec:soloSettings.durationSec}; return roomData?.series||{status:'lobby'}; }
 function isUntimedGame(id){ return ['needle','gomoku','stackTower'].includes(id); }
 function roundDurationMs(id,durationSec){ return isUntimedGame(id)?0:(Number(durationSec||45)*1000 + (id==='airstrike'?15000:0)); }
 function currentRoundTimeLeft(sr,now=serverNow()){
@@ -147,6 +151,44 @@ function blankPlayer(name){ return {uid,deviceId,name,online:true,ready:false,sc
 function saveRecentRoom(){ if(roomCode){localStorage.setItem('duopk_lastRoom',roomCode);localStorage.setItem('duopk_nickname',normalizeName());renderContinueCard();} }
 function renderContinueCard(){ const code=localStorage.getItem('duopk_lastRoom'),name=localStorage.getItem('duopk_nickname');if(code&&name){els.continueCard.classList.add('show');els.continueTitle.textContent=`继续房间 ${code}`;els.continueSub.textContent=`以 ${name} 的昵称重新连接`; }else els.continueCard.classList.remove('show'); }
 function requireIdentity(){clearError();if(!firebaseReady||!db||!uid){showError('Firebase 还没有连接完成，请看右上角状态；如果一直不变，请强制刷新页面。');return false;}if(!normalizeName()){showError('先输入昵称。');return false;}return true;}
+
+
+const SOLO_BEST_KEY='duopk_solo_best_v1';
+function getSoloBest(game=soloSettings.game,diff=soloSettings.difficulty,duration=soloSettings.durationSec){
+  try{const d=JSON.parse(localStorage.getItem(SOLO_BEST_KEY)||'{}');return Number(d?.[game]?.[diff]?.[String(duration)]?.score||0);}catch{return 0;}
+}
+function saveSoloBest(game,diff,duration,newScore){
+  let d={};try{d=JSON.parse(localStorage.getItem(SOLO_BEST_KEY)||'{}')||{};}catch{}
+  d[game]??={};d[game][diff]??={};const k=String(duration),old=Number(d[game][diff]?.[k]?.score||0),best=Math.max(old,Number(newScore||0));
+  d[game][diff][k]={score:best,updatedAt:Date.now()};localStorage.setItem(SOLO_BEST_KEY,JSON.stringify(d));return {old,best,isNew:best>old};
+}
+function openSoloLobby(){
+  soloMode=true;stopRenderLoop();soloSession=null;roundId=null;localPhase='idle';roundMounted=false;
+  document.getElementById('gameScreen')?.classList.remove('solo-playing');
+  showScreen('soloLobbyScreen');renderSoloSettings();renderSoloGameLibrary();
+}
+function leaveSoloToHome(){
+  soloMode=false;soloSession=null;roundId=null;localPhase='idle';roundMounted=false;stopRenderLoop();closeExitModal();
+  document.getElementById('gameScreen')?.classList.remove('solo-playing');showScreen('homeScreen');
+}
+function renderSoloSettings(){
+  document.querySelectorAll('[data-solo-diff]').forEach(b=>b.classList.toggle('active',b.dataset.soloDiff===soloSettings.difficulty));
+  if(els.soloDurationRange){els.soloDurationRange.value=soloSettings.durationSec;els.soloDurationLabel.textContent=`${soloSettings.durationSec} 秒`;els.soloDurationBox.textContent=`${soloSettings.durationSec}s`;}
+  const g=GAMES[soloSettings.game];if(els.soloSelectedText)els.soloSelectedText.textContent=`已选：${g.icon} ${g.name}`;
+  if(els.soloBestText)els.soloBestText.textContent=`当前难度最佳：${getSoloBest().toLocaleString()} 分`;
+}
+function renderSoloGameLibrary(){
+  if(!els.soloGameGrid)return;els.soloGameGrid.innerHTML='';
+  for(const id of SOLO_GAME_IDS){const g=GAMES[id];if(soloFilter!=='all'&&g.category!==soloFilter)continue;const b=document.createElement('button');b.className='game-option'+(soloSettings.game===id?' selected':'');b.dataset.game=id;b.style.setProperty('--accent',g.category==='brain'?'rgba(168,139,255,.18)':g.category==='reaction'?'rgba(87,231,255,.18)':'rgba(255,122,200,.15)');b.innerHTML=`<div class="game-ico">${g.icon}</div><b>${g.name}</b><small>${g.desc}</small><div class="game-meta"><span class="pill">${({brain:'脑力',reaction:'反应',arcade:'街机'})[g.category]||'训练'}</span><span class="pill">单人可玩</span></div>`;b.addEventListener('click',()=>{soloSettings.game=id;renderSoloSettings();renderSoloGameLibrary();});els.soloGameGrid.appendChild(b);}
+}
+function startSoloTraining(){
+  const nm=normalizeName();if(nm)localStorage.setItem('duopk_nickname',nm);
+  const game=soloSettings.game;if(!SOLO_GAME_IDS.includes(game))return;soloMode=true;soloFinishing=false;activeGame=game;roundId=`solo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;const startAt=serverNow()+2200,endAt=startAt+Number(soloSettings.durationSec)*1000;soloSession={status:'round',seriesId:roundId,roundId,roundIndex:0,totalRounds:1,playlist:[game],wins:{p1:0,p2:0},roundResults:[],difficulty:soloSettings.difficulty,durationSec:Number(soloSettings.durationSec),startAt,endAt};
+  resetLocalRound(game);showScreen('gameScreen');document.getElementById('gameScreen')?.classList.add('solo-playing');els.roundResult.classList.remove('show');els.opScoreName.textContent='PERSONAL BEST';els.opScore.textContent=getSoloBest(game,soloSettings.difficulty).toLocaleString();mountGame(game);startRenderLoop();
+}
+function finishSoloTraining(){
+  if(!soloMode||soloFinishing||soloSession?.status!=='round')return;soloFinishing=true;soloSession={...soloSession,status:'result',finishedAt:serverNow()};stopRenderLoop();localPhase='result';const rec=saveSoloBest(activeGame,soloSettings.difficulty,soloSettings.durationSec,score);const g=GAMES[activeGame];els.soloResultEmoji.textContent=rec.isNew?'🏆':'✨';els.soloResultTitle.textContent=rec.isNew?'NEW BEST':'训练完成';els.soloResultScore.textContent=score.toLocaleString();els.soloResultMeta.textContent=`${g.icon} ${g.name} · ${DIFFS[soloSettings.difficulty].name} · ${soloSettings.durationSec} 秒`;els.soloResultBest.textContent=rec.isNew?`新纪录！之前 ${rec.old.toLocaleString()} 分`:`个人最佳 ${rec.best.toLocaleString()} 分`;document.getElementById('gameScreen')?.classList.remove('solo-playing');showScreen('soloResultScreen');soloFinishing=false;
+}
 
 async function createRoom(){
   if(!requireIdentity())return;els.createBtn.disabled=true;els.createBtn.textContent='正在创建…';
@@ -283,15 +325,15 @@ function renderFrame(){
   else els.timer.textContent=untimed?'∞':formatTime(Number(sr.endAt||now)-now);
   els.roundLabel.textContent=`ROUND ${sr.roundIndex+1}/${sr.totalRounds}`;renderRoundDots(sr);updateEffectUI(now);syncOpponentUI();
   if(live){renderActiveGame(now,dt,sr);els.myScore.textContent=score.toLocaleString();scheduleSync();}
-  if(ended&&now>=Number(sr.endAt||0)+450&&isCoordinator())finalizeRound(sr);
-  if((isUntimedGame(activeGame)||activeGame==='airstrike')&&roomData?.shared?.roundId===roundId&&roomData.shared.winner&&isCoordinator())finalizeRound(sr,true);
+  if(ended&&now>=Number(sr.endAt||0)+450){if(soloMode)finishSoloTraining();else if(isCoordinator())finalizeRound(sr);}
+  if(!soloMode&&(isUntimedGame(activeGame)||activeGame==='airstrike')&&roomData?.shared?.roundId===roundId&&roomData.shared.winner&&isCoordinator())finalizeRound(sr,true);
 }
 function renderRoundDots(sr){
   const rr=Array.isArray(sr.roundResults)?sr.roundResults:Object.values(sr.roundResults||{});els.roundDots.innerHTML='';for(let i=0;i<sr.totalRounds;i++){const d=document.createElement('i');d.className='round-dot';const r=rr[i];if(r)d.classList.add(r.winner==='draw'?'draw':r.winner===mySlot?'me':'op');if(i===sr.roundIndex)d.classList.add('current');els.roundDots.appendChild(d);}
 }
 function resetLocalRound(type){
   score=0;progress=0;status='准备中';roundMounted=false;usedSkills=new Set();shieldActive=false;effects={freezeUntil:0,blindUntil:0,jamUntil:0,rushUntil:0,speedUntil:0,obstacleUntil:0,fakeUntil:0};gameState={};els.feed.innerHTML='';els.myScore.textContent='0';els.opScore.textContent='0';
-  update(ref(db,`rooms/${roomCode}/players/${mySlot}`),{score:0,progress:0,status:'准备中',ready:false}).catch(()=>{});
+  if(!soloMode)update(ref(db,`rooms/${roomCode}/players/${mySlot}`),{score:0,progress:0,status:'准备中',ready:false}).catch(()=>{});
   if(type==='2048')init2048();if(type==='tetris')initTetris();if(type==='runner')initRunner();if(type==='plane')initPlane();if(type==='schulte')initSchulte(false);if(type==='schulteDynamic')initSchulteWheel();if(type==='memory')initMemory();if(type==='memorySequence')initMemorySequence();if(type==='tracking')initTracking();if(type==='color')initColor();if(type==='tugRhythm')initTugRhythm();if(type==='duelShooter')initDuelShooter();if(type==='stackTower')initStackTower();if(type==='airstrike')initAirstrike();
 }
 async function finalizeRound(sr,early=false){
@@ -337,7 +379,7 @@ async function backToLobby(){
 }
 
 function mountGame(type){
-  roundMounted=true;els.gameSurface.innerHTML='';const g=GAMES[type];els.gameModeTitle.textContent=`${g.icon} ${g.name}`;els.gameHint.textContent=g.desc;els.difficultyBadge.textContent=DIFFS[series().difficulty]?.name||'中等';els.myScoreName.textContent=me()?.name||'YOU';els.opScoreName.textContent=opponent()?.name||'RIVAL';
+  roundMounted=true;els.gameSurface.innerHTML='';const g=GAMES[type];els.gameModeTitle.textContent=`${g.icon} ${g.name}`;els.gameHint.textContent=g.desc;els.difficultyBadge.textContent=DIFFS[series().difficulty]?.name||'中等';els.myScoreName.textContent=me()?.name||'YOU';els.opScoreName.textContent=soloMode?'PERSONAL BEST':(opponent()?.name||'RIVAL');if(soloMode)els.opScore.textContent=getSoloBest(type,soloSettings.difficulty).toLocaleString();
   if(type==='reaction')mountReaction();else if(type==='number')mountNumber();else if(type==='schulte')mountSchulte();else if(type==='schulteDynamic')mountSchulteWheel();else if(type==='color')mountColor();else if(type==='falling')mountFalling();else if(type==='memory')mountMemory();else if(type==='memorySequence')mountMemorySequence();else if(type==='tracking')mountTracking();else if(type==='2048')mount2048();else if(type==='tetris')mountTetris();else if(type==='runner')mountRunner();else if(type==='plane')mountPlane();else if(type==='tug')mountTug();else if(type==='tugRhythm')mountTugRhythm();else if(type==='duelShooter')mountDuelShooter();else if(type==='stackTower')mountStackTower();else if(type==='needle')mountNeedle();else if(type==='gomoku')mountGomoku();else if(type==='airstrike')mountAirstrike();
   renderSkills();
 }
@@ -353,15 +395,16 @@ function scheduleSync(immediate=false){
   if(!roomCode||!mySlot)return;const now=Date.now();if(immediate&&now-lastSyncAt>130)return flushPlayerState();if(syncTimer)return;syncTimer=setTimeout(()=>{syncTimer=null;flushPlayerState();},180);
 }
 async function flushPlayerState(){if(!roomCode||!mySlot)return;lastSyncAt=Date.now();try{await update(ref(db,`rooms/${roomCode}/players/${mySlot}`),{score,progress,status,online:true});}catch(e){console.error(e);}}
-function syncOpponentUI(){const op=opponent();els.opScore.textContent=Number(op?.score||0).toLocaleString();els.opGenericScore.textContent=Number(op?.score||0).toLocaleString();els.opGenericStatus.textContent=op?.status||'正在战斗';els.opProgress.style.width=`${clamp(Number(op?.progress||0),0,100)}%`;}
+function syncOpponentUI(){if(soloMode){const best=getSoloBest(activeGame,soloSettings.difficulty);els.opScore.textContent=best.toLocaleString();els.opGenericScore.textContent=best.toLocaleString();els.opGenericStatus.textContent='个人最佳';els.opProgress.style.width=`${clamp(best?score/best*100:0,0,100)}%`;return;}const op=opponent();els.opScore.textContent=Number(op?.score||0).toLocaleString();els.opGenericScore.textContent=Number(op?.score||0).toLocaleString();els.opGenericStatus.textContent=op?.status||'正在战斗';els.opProgress.style.width=`${clamp(Number(op?.progress||0),0,100)}%`;}
 
 // ---------- skills ----------
 function skillThreshold(base){return Math.round(base*(Number(series().durationSec||45)/45));}
 function renderSkills(){
-  syncOpponentUI();const cfg=GAMES[activeGame]?.skills||[];els.skills.innerHTML='';if(!cfg.length){els.skills.innerHTML='<div class="empty" style="padding:22px 10px">♟ 纯竞技模式<br><small>本游戏不使用技能</small></div>';return;}
+  syncOpponentUI();els.skills.innerHTML='';if(soloMode){els.skills.innerHTML='<div class="empty" style="padding:22px 10px">🧠 单人训练模式<br><small>关闭对战技能，只记录你的纯净成绩</small></div>';return;}const cfg=GAMES[activeGame]?.skills||[];if(!cfg.length){els.skills.innerHTML='<div class="empty" style="padding:22px 10px">♟ 纯竞技模式<br><small>本游戏不使用技能</small></div>';return;}
   cfg.forEach(([id,base])=>{const def=SKILL_DEFS[id],at=skillThreshold(base),ready=score>=at&&!usedSkills.has(id),used=usedSkills.has(id);const b=document.createElement('button');b.className='skill'+(ready?' ready':'')+(used?' used':'');b.disabled=!ready||localPhase!=='playing';b.innerHTML=`<span class="skill-ico">${def.icon}</span><span><div class="skill-name">${def.name}</div><div class="skill-desc">${def.desc}</div></span><span class="skill-state">${used?'USED':ready?'可使用':`${score}/${at}`}</span>`;b.addEventListener('click',()=>useSkill(id,at));els.skills.appendChild(b);});
 }
 async function useSkill(type,at){
+  if(soloMode)return;
   if(!canInteract()||score<at||usedSkills.has(type))return;if(type==='shield'){usedSkills.add(type);shieldActive=true;addFeed('🛡️ 护盾已激活');renderSkills();return;}
   if(!opponent()?.online)return addFeed('对手离线，技能保留');usedSkills.add(type);renderSkills();await push(ref(db,`rooms/${roomCode}/attacks`),{from:mySlot,to:otherSlot(),type,roundId,game:activeGame,createdAt:serverTimestamp()});addFeed(`${SKILL_DEFS[type].icon} 已发动 ${SKILL_DEFS[type].name}`);
 }
@@ -592,7 +635,7 @@ function drawPlane(now){const cv=$('planeCanvas');if(!cv)return;const ctx=cv.get
 // ---------- Tug ----------
 function mountTug(){els.gameSurface.innerHTML='<div class="stage-inner"><div class="tug"><div class="info">疯狂点击 / 按空格，把绳结拉向自己</div><div class="rope"><div class="rope-dot" id="ropeDot"></div></div><button class="tug-btn" id="tugBtn">🪢 PULL!</button><div class="info" id="tugInfo">每次 +10</div></div></div>';$('tugBtn').addEventListener('click',hitTug);}
 function hitTug(){if(!canInteract())return;addScore(10,'持续发力');}
-function renderTug(){const op=Number(opponent()?.score||0),diff=clamp((score-op)/1000,-.45,.45);$('ropeDot').style.left=`${50+diff*100}%`;$('tugInfo').textContent=`你 ${score} · 对手 ${op}`;progress=clamp(50+diff*100,0,100);status='极速拔河';}
+function renderTug(){const op=Number(opponent()?.score||0),diff=clamp((score-op)/1000,-.45,.45);$('ropeDot').style.left=`${50+diff*100}%`;$('tugInfo').textContent=soloMode?`当前 ${score} · 继续冲高分`:`你 ${score} · 对手 ${op}`;progress=soloMode?clamp(score/1000*100,0,100):clamp(50+diff*100,0,100);status=soloMode?'极速手速训练':'极速拔河';}
 
 // ---------- Rhythm tug ----------
 function initTugRhythm(){gameState={lastHit:0,combo:0};}
@@ -735,8 +778,17 @@ function renderAirstrike(now){const sr=series(),cfg=airstrikeCfg(),sh=roomData?.
 
 // ---------- in-match exit / forfeit ----------
 function openExitModal(){
-  if(!roomCode)return;
   const sr=series();
+  if(soloMode){
+    els.exitContext.textContent='单人训练可以随时结束，不会影响任何双人房间或战绩。';
+    els.forfeitRoundBtn.style.display='none';
+    els.endSeriesBtn.style.display='flex';
+    els.endSeriesBtn.textContent='结束训练 · 回到单人设置';
+    els.leaveRoomNowBtn.textContent='结束训练 · 回到首页';
+    els.exitModal.classList.add('show');return;
+  }
+  if(!roomCode)return;
+  els.endSeriesBtn.textContent='结束系列赛 · 回到大厅';els.leaveRoomNowBtn.textContent='离开房间 · 稍后再回来';
   els.exitContext.textContent=sr.status==='round'?`第 ${(sr.roundIndex||0)+1}/${sr.totalRounds||settings().rounds} 局进行中。你可以只认输本局，也可以结束整套系列赛；长期房间不会被删除。`:'你可以回到大厅或暂时离开，长期房间和房间码都会保留。';
   els.forfeitRoundBtn.style.display=sr.status==='round'?'flex':'none';
   els.endSeriesBtn.style.display=sr.status!=='lobby'?'flex':'none';
@@ -758,8 +810,9 @@ async function forfeitCurrentRound(){
     await update(ref(db,`rooms/${roomCode}/players/${mySlot}`),{status:'本局认输',score:mineScore,progress});
   }catch(e){console.error(e);addFeed(`退出失败：${friendlyError(e)}`);}
 }
-async function endSeriesToLobby(){closeExitModal();await cancelSeries();}
+async function endSeriesToLobby(){if(soloMode){closeExitModal();stopRenderLoop();soloSession=null;roundMounted=false;localPhase='idle';document.getElementById('gameScreen')?.classList.remove('solo-playing');showScreen('soloLobbyScreen');renderSoloSettings();renderSoloGameLibrary();return;}closeExitModal();await cancelSeries();}
 async function leaveRoomNow(){
+  if(soloMode){leaveSoloToHome();return;}
   closeExitModal();
   try{if(roomCode&&series().status!=='lobby')await cancelSeries();}catch(e){console.error(e);}
   await leaveRoom(true);
@@ -775,6 +828,7 @@ async function openHistory(){
 
 // ---------- bindings ----------
 function bind(){
+  els.soloBtn.addEventListener('click',openSoloLobby);els.soloBackHomeBtn.addEventListener('click',leaveSoloToHome);els.soloStartBtn.addEventListener('click',startSoloTraining);els.soloReplayBtn.addEventListener('click',startSoloTraining);els.soloSettingsBtn.addEventListener('click',openSoloLobby);els.soloResultHomeBtn.addEventListener('click',leaveSoloToHome);
   els.createBtn.addEventListener('click',createRoom);els.joinBtn.addEventListener('click',()=>joinRoom());els.readyBtn.addEventListener('click',toggleReady);els.cancelSeriesBtn.addEventListener('click',cancelSeries);els.leaveBtn.addEventListener('click',()=>leaveRoom(true));els.resultLeaveBtn.addEventListener('click',()=>leaveRoom(true));els.backLobbyBtn.addEventListener('click',backToLobby);
   els.gameExitBtn.addEventListener('click',openExitModal);els.resumeGameBtn.addEventListener('click',closeExitModal);els.forfeitRoundBtn.addEventListener('click',forfeitCurrentRound);els.endSeriesBtn.addEventListener('click',endSeriesToLobby);els.leaveRoomNowBtn.addEventListener('click',leaveRoomNow);els.exitModal.addEventListener('click',e=>{if(e.target===els.exitModal)closeExitModal();});
   els.copyRoomBtn.addEventListener('click',async()=>{const url=`${location.origin}${location.pathname}?room=${roomCode}`;try{await navigator.clipboard.writeText(`${url}\n房间码：${roomCode}`);els.roomHint.textContent='邀请链接 + 房间码已复制';setTimeout(()=>els.roomHint.textContent='房间会保留，之后可以继续用同一个房间码回来',1700);}catch{els.roomHint.textContent=`房间码：${roomCode}`;}});
@@ -786,8 +840,11 @@ function bind(){
   document.querySelectorAll('[data-diff]').forEach(b=>b.addEventListener('click',()=>updateSetting({difficulty:b.dataset.diff})));
   els.durationRange.addEventListener('input',()=>{els.durationLabel.textContent=`${els.durationRange.value} 秒`;els.durationBox.textContent=`${els.durationRange.value}s`;});els.durationRange.addEventListener('change',()=>updateSetting({durationSec:Number(els.durationRange.value)}));
   document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{activeFilter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===b));renderGameLibrary();}));
+  document.querySelectorAll('[data-solo-diff]').forEach(b=>b.addEventListener('click',()=>{soloSettings.difficulty=b.dataset.soloDiff;renderSoloSettings();renderSoloGameLibrary();}));
+  els.soloDurationRange.addEventListener('input',()=>{soloSettings.durationSec=Number(els.soloDurationRange.value);renderSoloSettings();});
+  document.querySelectorAll('[data-solo-filter]').forEach(b=>b.addEventListener('click',()=>{soloFilter=b.dataset.soloFilter;document.querySelectorAll('[data-solo-filter]').forEach(x=>x.classList.toggle('active',x===b));renderSoloGameLibrary();}));
   window.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){if(els.exitModal.classList.contains('show'))closeExitModal();else if(roomCode&&series().status!=='lobby')openExitModal();return;}
+    if(e.key==='Escape'){if(els.exitModal.classList.contains('show'))closeExitModal();else if((soloMode&&series().status==='round')||(roomCode&&series().status!=='lobby'))openExitModal();return;}
     if(localPhase!=='playing')return;const k=e.key.toLowerCase();if(activeGame==='2048'){const m={arrowleft:'left',a:'left',arrowright:'right',d:'right',arrowup:'up',w:'up',arrowdown:'down',s:'down'}[k];if(m){e.preventDefault();move2048(m);}}
     else if(activeGame==='tetris'){if(k==='arrowleft'||k==='a')tetrisMove(-1);else if(k==='arrowright'||k==='d')tetrisMove(1);else if(k==='arrowup'||k==='w')tetrisRotate();else if(k==='arrowdown'||k==='s')tetrisDrop();}
     else if(activeGame==='runner'&&(k===' '||k==='arrowup'||k==='w')){e.preventDefault();runnerJump();}
@@ -810,13 +867,13 @@ window.addEventListener('unhandledrejection',e=>{
   if(els?.homeError) showError(`网络/脚本错误：${friendlyError(e.reason)}`);
 });
 
-bind();renderGameLibrary();
+bind();renderGameLibrary();renderSoloSettings();renderSoloGameLibrary();
 const savedName=localStorage.getItem('duopk_nickname');if(savedName)els.nickname.value=savedName;
 els.netText.textContent='初始化中…';
 initFirebase().then(()=>{
   const q=new URLSearchParams(location.search),code=q.get('room')?.toUpperCase();
   if(code)els.roomInput.value=code;
-  if(code&&savedName)setTimeout(()=>joinRoom(code),250);
+  if(code&&savedName)setTimeout(()=>{if(!soloMode)joinRoom(code);},250);
 }).catch(e=>{
   console.error(e);
   firebaseReady=false;
