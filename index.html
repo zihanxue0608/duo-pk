@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="theme-color" content="#080b14" />
-  <title>DUO PK · 双人 / 单人竞技场 V4.2</title>
+  <title>DUO PK · 双人 / 单人竞技场 V5.0</title>
   <style>
     :root{
       --bg:#070912;--bg2:#0b1020;--panel:rgba(18,22,39,.78);--panel2:rgba(25,30,53,.72);
@@ -120,6 +120,13 @@
     .big-choice:active,.grid-cell:active,.color-btn:active,.tug-btn:active,.mobile-controls button:active{transform:scale(.975)}
     @media(max-width:640px){#gameScreen.solo-playing .arena-head{gap:7px;padding:0 2px;position:sticky;top:0;z-index:80}#gameScreen.solo-playing .arena-head .scorebox:first-child{padding:8px 11px;border-radius:14px}#gameScreen.solo-playing .arena-head .timer{min-width:104px;padding:7px 10px;border-radius:14px}#gameScreen.solo-playing .arena-head .timer strong{font-size:23px}#gameScreen.solo-playing .game-card{height:calc(100svh - 105px);min-height:480px}.solo-library .game-option{min-height:135px;padding:12px}.reaction-kicker{top:14px}.reaction-tap-hint{bottom:14px}}
 
+    /* V5.0 — per-game settings, feedback and new arenas */
+    .game-option{display:block}.game-option-main{position:relative;z-index:2;cursor:pointer}.game-setting-btn{position:absolute;z-index:4;right:9px;bottom:9px;width:30px;height:30px;border-radius:10px;border:1px solid var(--line);background:rgba(7,10,20,.78);cursor:pointer}.game-setting-btn:hover{background:rgba(87,231,255,.12);border-color:rgba(87,231,255,.28)}
+    .settings-modal{position:fixed;z-index:550;inset:0;display:none;place-items:center;padding:18px;background:rgba(3,5,12,.72);backdrop-filter:blur(12px)}.settings-modal.show{display:grid}.settings-panel{width:min(520px,100%);padding:22px}.settings-panel h2{margin:3px 0 5px}.settings-panel-copy{font-size:11px;color:var(--muted);line-height:1.55;margin-bottom:15px}.settings-form{display:grid;gap:12px}.settings-field{display:grid;gap:6px}.settings-field label{font-size:11px;font-weight:850;color:#b6bfd1}.settings-field select,.settings-field input[type=number]{width:100%;padding:11px;border:1px solid var(--line);border-radius:12px;background:#090d18;color:white}.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}.settings-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}.settings-summary{position:relative;z-index:2;margin-top:8px;color:#8dcfda;font-size:8px;font-weight:800}
+    .juice{position:absolute;z-index:70;left:50%;top:46%;pointer-events:none;font-size:20px;font-weight:950;color:#8ff1bf;text-shadow:0 4px 18px rgba(0,0,0,.7);animation:juiceUp .72s ease-out forwards}.juice.bad{color:#ff9baa}@keyframes juiceUp{0%{opacity:0;transform:translate(-50%,12px) scale(.75)}18%{opacity:1;transform:translate(-50%,0) scale(1.13)}100%{opacity:0;transform:translate(-50%,-55px) scale(.95)}}.stage-wrap.reward{animation:rewardFlash .34s ease}@keyframes rewardFlash{50%{box-shadow:inset 0 0 0 3px rgba(97,230,169,.35),0 0 36px rgba(97,230,169,.16)}}
+    .board2048{grid-template-rows:repeat(4,1fr);flex:0 0 auto}.tile{min-width:0;min-height:0;overflow:hidden}.tracking-canvas{filter:none!important}.key-chip{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border:1px solid rgba(255,255,255,.15);border-radius:6px;background:rgba(255,255,255,.06);font-size:9px;color:#dce5f5}.keyboard-guide{font-size:9px;color:#71809a;text-align:center}
+    .new-game-wrap{width:min(760px,98%);height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px}.new-game-canvas{width:100%;height:100%;min-height:300px}.connect-board{width:min(610px,92%);aspect-ratio:7/6;display:grid;grid-template-columns:repeat(7,1fr);gap:7px;padding:12px;border-radius:20px;background:#173868}.connect-cell{border:0;border-radius:50%;background:#07101d;box-shadow:inset 0 3px 8px rgba(0,0,0,.5);cursor:pointer}.connect-cell.p1{background:radial-gradient(circle at 35% 30%,#aef6ff,#26a9ca 65%,#106278)}.connect-cell.p2{background:radial-gradient(circle at 35% 30%,#ffd1eb,#dc559d 65%,#8b245e)}.fighter-controls,.runner-controls{display:flex;justify-content:center;gap:7px;flex-wrap:wrap}.fighter-controls button,.runner-controls button{min-width:58px;height:42px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.06);font-weight:900}.fighter-controls .attack{background:rgba(255,122,200,.14)}
+
   </style>
 </head>
 <body>
@@ -127,7 +134,7 @@
     <header class="topbar"><div class="brand">DUO <span>PK</span></div><div class="net"><i class="dot" id="netDot"></i><span id="netText">正在连接</span></div></header>
 
     <section class="screen active" id="homeScreen">
-      <div class="home"><div class="hero"><div class="eyebrow">persistent two-player arena</div><h1>一个房间，<br><em>一直玩下去。</em></h1><p>长期房间、5/10/15 局系列赛、随机游戏池，也支持一个人直接训练。脑力、反应力、手速、街机和棋类都放进同一个竞技场。</p><div class="hero-tags"><span class="tag">🧠 前额叶训练</span><span class="tag">⚡ 反应力</span><span class="tag">🎮 20 种游戏</span><span class="tag">🧩 15 种单人训练</span><span class="tag">🎲 随机系列赛</span><span class="tag">📈 长期战绩</span></div></div>
+      <div class="home"><div class="hero"><div class="eyebrow">persistent two-player arena</div><h1>一个房间，<br><em>一直玩下去。</em></h1><p>长期房间、5/10/15 局系列赛、洗牌袋随机池，也支持一个人直接训练。每个游戏都能单独设置，鼠标终于可以少加一点班。</p><div class="hero-tags"><span class="tag">🧠 前额叶训练</span><span class="tag">⌨️ 键盘联动</span><span class="tag">🎮 25 种游戏</span><span class="tag">⚙️ 独立设置</span><span class="tag">🎲 公平随机</span><span class="tag">📈 长期战绩</span></div></div>
       <div class="glass login"><h2>进入竞技场</h2><div class="sub">同一个昵称 + 同一个房间码可以继续回到你们的长期房间。房间不会因为打完一局就消失。</div><div class="field"><label class="label">你的昵称</label><input class="input" id="nickname" maxlength="12" placeholder="例如：Zihan" autocomplete="nickname"></div><button class="primary" id="createBtn" style="width:100%">创建长期房间</button><button class="secondary solo-entry" id="soloBtn">🧠 单人训练 · 不用等朋友</button><div class="or">双人联机</div><div class="field"><label class="label">房间码</label><input class="input" id="roomInput" maxlength="5" placeholder="A8X2F" style="text-transform:uppercase;letter-spacing:.16em"></div><button class="secondary" id="joinBtn" style="width:100%">加入 / 回到房间</button><div class="continue-card" id="continueCard"><div><b id="continueTitle">继续上次房间</b><small id="continueSub"></small></div><button class="ghost" id="continueBtn">继续</button></div><div class="error" id="homeError"></div></div></div>
     </section>
 
@@ -142,7 +149,7 @@
           <button class="primary solo-start" id="soloStartBtn">开始单人训练</button>
           <div class="picker-help">单人模式支持脑力、反应和街机类小游戏；五子棋、见缝插针、双人叠塔等需要对手的项目只保留在双人房间。</div>
         </aside>
-        <div class="glass solo-library"><div class="section-title"><h3>🎮 单人游戏库</h3><span class="tiny">15 个可直接练习</span></div><div class="filterbar" id="soloFilterBar"><button class="filter active" data-solo-filter="all">全部</button><button class="filter" data-solo-filter="brain">🧠 脑力</button><button class="filter" data-solo-filter="reaction">⚡ 反应</button><button class="filter" data-solo-filter="arcade">🕹 街机</button></div><div class="game-grid" id="soloGameGrid"></div></div>
+        <div class="glass solo-library"><div class="section-title"><h3>🎮 单人游戏库</h3><span class="tiny">17 个可直接练习</span></div><div class="filterbar" id="soloFilterBar"><button class="filter active" data-solo-filter="all">全部</button><button class="filter" data-solo-filter="brain">🧠 脑力</button><button class="filter" data-solo-filter="reaction">⚡ 反应</button><button class="filter" data-solo-filter="arcade">🕹 街机</button></div><div class="game-grid" id="soloGameGrid"></div></div>
       </div>
     </div></section>
 
@@ -158,7 +165,7 @@
           <div class="series-preview"><b id="seriesPreviewTitle">5 局 · 同一游戏</b><small id="seriesPreviewSub">选择右侧一个游戏，双方准备后一次打完整套。</small></div>
           <div class="ready-row"><button class="primary" id="readyBtn">我准备好了</button><button class="ghost" id="cancelSeriesBtn" style="display:none">结束系列赛</button></div><div class="picker-help" id="lobbyNote">等待朋友加入…</div>
         </aside>
-        <div class="glass library"><div class="section-title"><h3>🎮 游戏库</h3><span class="tiny" id="pickerNote">同一模式点 1 个；随机模式可多选</span></div><div class="filterbar" id="filterBar"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="brain">🧠 脑力</button><button class="filter" data-filter="reaction">⚡ 反应</button><button class="filter" data-filter="arcade">🕹 街机</button><button class="filter" data-filter="board">♟ 对战</button></div><div class="game-grid" id="gameGrid"></div><div class="picker-help">随机模式会从你勾选的游戏池中生成 5/10/15 局，避免连续出现同一个游戏。</div></div>
+        <div class="glass library"><div class="section-title"><h3>🎮 游戏库</h3><span class="tiny" id="pickerNote">点卡片选择 · 点 ⚙ 单独设置</span></div><div class="filterbar" id="filterBar"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="brain">🧠 脑力</button><button class="filter" data-filter="reaction">⚡ 反应</button><button class="filter" data-filter="arcade">🕹 街机</button><button class="filter" data-filter="board">♟ 棋盘/对战</button></div><div class="game-grid" id="gameGrid"></div><div class="picker-help">随机模式采用“洗牌袋”：所有勾选游戏会先各出现一次，再开始下一轮；每个游戏右下角可单独设置。</div></div>
       </div>
     </div></section>
 
@@ -177,6 +184,8 @@
   <div class="exit-modal" id="exitModal"><div class="glass exit-panel"><div class="exit-kicker">MATCH CONTROL</div><h2>想先退出吗？</h2><div class="exit-copy" id="exitContext">长期房间会保留。你可以只认输当前一局，或者结束整套系列赛回到大厅。</div><div class="exit-actions"><button class="primary" id="resumeGameBtn">继续比赛</button><button class="secondary" id="forfeitRoundBtn">🏳️ 认输本局 · 下一局继续</button><button class="danger" id="endSeriesBtn">结束系列赛 · 回到大厅</button><button class="ghost" id="leaveRoomNowBtn">离开房间 · 稍后再回来</button></div><div class="exit-note">按 ESC 也可以打开 / 关闭这个菜单 · 房间码不会被删除</div></div></div>
   <div class="round-result" id="roundResult"><div class="glass round-box"><div class="round-emoji" id="roundEmoji">⚡</div><h2 id="roundResultTitle">本局胜利</h2><div class="round-score" id="roundResultScore">1000 : 820</div><div class="next-game" id="nextGameText">下一局：🔢 经典舒尔特 · 3 秒后开始</div></div></div>
 
-  <script type="module" src="./app.js?v=4.2-solo-polish"></script>
+  <div class="settings-modal" id="gameSettingsModal"><div class="glass settings-panel"><div class="label">PER-GAME SETTINGS</div><h2 id="gameSettingsTitle">游戏设置</h2><div class="settings-panel-copy" id="gameSettingsCopy">这些设置只影响当前游戏，双人房间会自动同步给双方。</div><div class="settings-form" id="gameSettingsForm"></div><div class="settings-actions"><button class="ghost" id="resetGameSettingsBtn">恢复默认</button><button class="secondary" id="closeGameSettingsBtn">取消</button><button class="primary" id="saveGameSettingsBtn">保存设置</button></div></div></div>
+
+  <script type="module" src="./app.js?v=5.0-per-game"></script>
 </body>
 </html>
